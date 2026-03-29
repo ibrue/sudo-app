@@ -18,6 +18,7 @@ public class SudoEngine : IDisposable
 
     private readonly AppDetector _appDetector = new();
     private readonly UIAutomationButtonFinder _buttonFinder = new();
+    private readonly OCRButtonFinder _ocrFinder = new();
     private readonly ActionExecutor _executor = new();
     private readonly SimpleActionExecutor _simpleExecutor = new();
     private readonly HotkeyListener _hotkeyListener = new();
@@ -103,8 +104,9 @@ public class SudoEngine : IDisposable
 
         Console.WriteLine($"[sudo] Target: {app.DisplayName} (PID {app.ProcessId}), action: {action.GetDisplayName()}");
 
-        // UI Automation search
         var searchTerms = _configStore.SearchTerms(action);
+
+        // Strategy 1: UI Automation (preferred)
         var result = _buttonFinder.FindButton(searchTerms, app.WindowHandle);
 
         if (result.Succeeded && result.Element != null)
@@ -121,12 +123,27 @@ public class SudoEngine : IDisposable
                 LastAction = $"{action.GetDisplayName()} - failed";
                 LastMethod = $"UI Automation: {execResult.Detail}";
             }
+            StatusChanged?.Invoke();
+            return;
+        }
+
+        Console.WriteLine($"[sudo] UI Automation miss - falling back to OCR");
+
+        // Strategy 2: Windows OCR fallback
+        var ocrResult = _ocrFinder.FindButton(searchTerms, app.WindowHandle);
+
+        if (ocrResult.Succeeded && ocrResult.ClickPoint.HasValue)
+        {
+            _ocrFinder.ClickAt(ocrResult.ClickPoint.Value);
+            LastAction = $"{action.GetDisplayName()}";
+            LastMethod = $"OCR -> Click ({ocrResult.ClickPoint.Value.X}, {ocrResult.ClickPoint.Value.Y})";
+            Console.WriteLine($"[sudo] OK: {action.GetDisplayName()} via OCR -> '{ocrResult.MatchedText}'");
         }
         else
         {
             LastAction = $"{action.GetDisplayName()} - button not found";
-            LastMethod = $"Searched UI Automation tree";
-            Console.WriteLine($"[sudo] Button not found: {result.FailureReason}");
+            LastMethod = "Searched UI Automation + OCR";
+            Console.WriteLine($"[sudo] Button not found: {ocrResult.FailureReason}");
         }
 
         StatusChanged?.Invoke();
