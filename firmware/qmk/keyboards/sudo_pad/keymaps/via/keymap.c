@@ -2,27 +2,35 @@
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
-    /* Layer 0: Default macro keys */
-    [0] = LAYOUT_ortho_2x2(
-        C(S(KC_F13)), C(S(KC_F14)),
-        C(S(KC_F15)), C(S(KC_F16))
+    /* Layer 0: Default macro keys (4 vertical 2U keys) */
+    [0] = LAYOUT(
+        C(S(KC_F13)),
+        C(S(KC_F14)),
+        C(S(KC_F15)),
+        C(S(KC_F16))
     ),
 
     /* Layer 1: Configurable via VIA */
-    [1] = LAYOUT_ortho_2x2(
-        KC_TRNS, KC_TRNS,
-        KC_TRNS, KC_TRNS
+    [1] = LAYOUT(
+        KC_TRNS,
+        KC_TRNS,
+        KC_TRNS,
+        KC_TRNS
     ),
 
     /* Layer 2: Configurable via VIA */
-    [2] = LAYOUT_ortho_2x2(
-        KC_TRNS, KC_TRNS,
-        KC_TRNS, KC_TRNS
+    [2] = LAYOUT(
+        KC_TRNS,
+        KC_TRNS,
+        KC_TRNS,
+        KC_TRNS
     ),
 
     /* Layer 3: Configurable via VIA */
-    [3] = LAYOUT_ortho_2x2(
-        KC_TRNS, KC_TRNS,
-        KC_TRNS, KC_TRNS
+    [3] = LAYOUT(
+        KC_TRNS,
+        KC_TRNS,
+        KC_TRNS,
+        KC_TRNS
     )
 };
