@@ -14,5 +14,10 @@ let package = Package(
                 .unsafeFlags(["-framework", "Vision"]),
             ]
         ),
+        .testTarget(
+            name: "SudoTests",
+            dependencies: ["Sudo"],
+            path: "Tests/SudoTests"
+        ),
     ]
 )

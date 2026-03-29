@@ -17,17 +17,16 @@ struct SudoApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuBarView(engine: engine, updater: updater)
+                .onAppear {
+                    engine.start()
+                    updater.startPeriodicChecks()
+                    checkAccessibilityPermission()
+                }
         } label: {
             Text("[sudo]")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(SudoTheme.mono(size: 9, weight: .medium))
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: engine.isConnected) { _, _ in }
-        .onAppear {
-            engine.start()
-            updater.startPeriodicChecks()
-            checkAccessibilityPermission()
-        }
     }
 
     private func checkAccessibilityPermission() {

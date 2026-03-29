@@ -9,14 +9,14 @@ struct MenuBarView: View {
             // Header
             HStack {
                 Text("[sudo]")
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x00FF41))
+                    .font(SudoTheme.mono(size: 14, weight: .bold))
+                    .foregroundColor(SudoTheme.accent)
                 Spacer()
                 Circle()
-                    .fill(engine.isConnected ? Color(hex: 0x00FF41) : Color(hex: 0xFF3333))
+                    .fill(engine.isConnected ? SudoTheme.accent : SudoTheme.error)
                     .frame(width: 6, height: 6)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.top, 14)
             .padding(.bottom, 10)
 
@@ -30,31 +30,31 @@ struct MenuBarView: View {
                     statusRow(label: "via", value: engine.lastMethod)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
             divider
 
             // Button map
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: SudoTheme.spacingXs) {
                 Text("> button map")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x666666))
+                    .font(SudoTheme.mono(size: 10))
+                    .foregroundColor(SudoTheme.textMuted)
                     .padding(.bottom, 2)
 
                 ForEach(PadAction.allCases, id: \.rawValue) { action in
                     HStack {
                         Text("F\(action.fKeyNumber)")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color(hex: 0x00FF41))
+                            .font(SudoTheme.mono(size: 11))
+                            .foregroundColor(SudoTheme.accent)
                             .frame(width: 30, alignment: .leading)
                         Text(action.displayName)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.white)
+                            .font(SudoTheme.mono(size: 11))
+                            .foregroundColor(SudoTheme.text)
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
             // Update banner
@@ -64,36 +64,36 @@ struct MenuBarView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("update available")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Color(hex: 0x00FF41))
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.accent)
                         Spacer()
                         Text("v\(updater.latestVersion)")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Color(hex: 0x666666))
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
                     }
 
                     if updater.isUpdating {
                         ProgressView(value: updater.updateProgress)
-                            .tint(Color(hex: 0x00FF41))
+                            .tint(SudoTheme.accent)
                         Text("installing...")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Color(hex: 0x666666))
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
                     } else {
                         Button(action: { updater.installUpdate() }) {
                             Text("[ INSTALL UPDATE ]")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(Color(hex: 0x00FF41))
+                                .font(SudoTheme.mono(size: 11))
+                                .foregroundColor(SudoTheme.accent)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 6)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 0)
-                                        .stroke(Color(hex: 0x00FF41), lineWidth: 1)
+                                    Rectangle()
+                                        .stroke(SudoTheme.accent, lineWidth: SudoTheme.borderWidth)
                                 )
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, SudoTheme.spacingMd)
                 .padding(.vertical, 10)
             }
 
@@ -105,8 +105,8 @@ struct MenuBarView: View {
                     updater.checkForUpdates()
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(Color(hex: 0x666666))
+                .font(SudoTheme.mono(size: 10))
+                .foregroundColor(SudoTheme.textMuted)
 
                 Spacer()
 
@@ -114,41 +114,41 @@ struct MenuBarView: View {
                     NSApplication.shared.terminate(nil)
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Color(hex: 0x666666))
+                .font(SudoTheme.mono(size: 11))
+                .foregroundColor(SudoTheme.textMuted)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
             // Version
             HStack {
                 Spacer()
                 Text("v\(OTAUpdater.currentVersion)")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x333333))
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.surface)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.bottom, SudoTheme.spacingSm)
         }
         .frame(width: 320)
-        .background(Color(hex: 0x0A0A0A))
+        .background(SudoTheme.bg)
     }
 
     private var divider: some View {
         Rectangle()
-            .fill(Color(hex: 0x1E1E1E))
+            .fill(SudoTheme.border)
             .frame(height: 1)
     }
 
     private func statusRow(label: String, value: String) -> some View {
         HStack(alignment: .top) {
             Text("\(label):")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Color(hex: 0x666666))
+                .font(SudoTheme.mono(size: 11))
+                .foregroundColor(SudoTheme.textMuted)
                 .frame(width: 36, alignment: .leading)
             Text(value)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.white)
+                .font(SudoTheme.mono(size: 11))
+                .foregroundColor(SudoTheme.text)
                 .lineLimit(2)
         }
     }
