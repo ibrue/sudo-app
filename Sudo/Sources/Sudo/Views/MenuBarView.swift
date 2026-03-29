@@ -3,6 +3,8 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
+    @ObservedObject var configStore: ButtonConfigStore = .shared
+    @State private var showingConfig = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -37,10 +39,19 @@ struct MenuBarView: View {
 
             // Button map
             VStack(alignment: .leading, spacing: 4) {
-                Text("> button map")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x666666))
-                    .padding(.bottom, 2)
+                HStack {
+                    Text("> button map")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Color(hex: 0x666666))
+                    Spacer()
+                    Button(action: { showingConfig = true }) {
+                        Text("configure")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(Color(hex: 0x00FF41))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.bottom, 2)
 
                 ForEach(PadAction.allCases, id: \.rawValue) { action in
                     HStack {
@@ -51,11 +62,19 @@ struct MenuBarView: View {
                         Text(action.displayName)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.white)
+                        if configStore.isCustomized(action) {
+                            Text("*")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(Color(hex: 0x00BFFF))
+                        }
                     }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+            .sheet(isPresented: $showingConfig) {
+                ButtonConfigView(configStore: configStore)
+            }
 
             // Update banner
             if updater.updateAvailable {

@@ -35,7 +35,13 @@ enum PadAction: String, CaseIterable {
         }
     }
 
+    /// Active search terms — uses custom config if set, otherwise defaults.
     var searchTerms: [String] {
+        return ButtonConfigStore.shared.searchTerms(for: self)
+    }
+
+    /// Built-in default search terms for each action.
+    var defaultSearchTerms: [String] {
         switch self {
         case .approve:
             return [
