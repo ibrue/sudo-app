@@ -29,6 +29,10 @@ public class ConfigForm : Form
     private readonly Dictionary<PadActionType, RadioButton> _complexRadios = new();
     private readonly Dictionary<PadActionType, ComboBox> _simpleActionCombos = new();
     private readonly Dictionary<PadActionType, TextBox> _searchTermBoxes = new();
+    private readonly Dictionary<PadActionType, Label> _hotkeyLabels = new();
+    private readonly Dictionary<PadActionType, Button> _hotkeyRecordButtons = new();
+    private readonly Dictionary<PadActionType, Button> _hotkeyResetButtons = new();
+    private PadActionType? _recordingAction;
 
     public ConfigForm()
     {
@@ -40,6 +44,8 @@ public class ConfigForm : Form
         BackColor = BgColor;
         ForeColor = WhiteText;
         Font = new Font("Consolas", 9);
+        KeyPreview = true;
+        KeyDown += OnFormKeyDown;
 
         // Header label
         var headerLabel = new Label
@@ -122,6 +128,50 @@ public class ConfigForm : Form
         };
         tab.Controls.Add(nameLabel);
         y += 30;
+
+        // Hotkey binding section
+        var hotkeyLabel = new Label
+        {
+            Text = "Hotkey:",
+            ForeColor = DimText,
+            Location = new Point(10, y),
+            AutoSize = true,
+        };
+        tab.Controls.Add(hotkeyLabel);
+
+        var hotkeyDisplay = new Label
+        {
+            Text = _configStore.GetHotkeyConfig(action).DisplayString,
+            ForeColor = _configStore.HasCustomHotkey(action) ? BlueAccent : WhiteText,
+            Font = new Font("Consolas", 10, FontStyle.Bold),
+            Location = new Point(80, y),
+            AutoSize = true,
+        };
+        _hotkeyLabels[action] = hotkeyDisplay;
+        tab.Controls.Add(hotkeyDisplay);
+
+        var recordBtn = CreateStyledButton("[ RECORD ]", GreenAccent);
+        recordBtn.Location = new Point(220, y - 3);
+        recordBtn.Size = new Size(85, 22);
+        recordBtn.Font = new Font("Consolas", 8);
+        var capturedAction = action;
+        recordBtn.Click += (_, _) => StartRecordingHotkey(capturedAction);
+        _hotkeyRecordButtons[action] = recordBtn;
+        tab.Controls.Add(recordBtn);
+
+        var hotkeyResetBtn = CreateStyledButton("[ RESET ]", RedAccent);
+        hotkeyResetBtn.Location = new Point(312, y - 3);
+        hotkeyResetBtn.Size = new Size(75, 22);
+        hotkeyResetBtn.Font = new Font("Consolas", 8);
+        hotkeyResetBtn.Visible = _configStore.HasCustomHotkey(action);
+        hotkeyResetBtn.Click += (_, _) =>
+        {
+            _configStore.ResetHotkeyConfig(capturedAction);
+            RefreshHotkeyDisplay(capturedAction);
+        };
+        _hotkeyResetButtons[action] = hotkeyResetBtn;
+        tab.Controls.Add(hotkeyResetBtn);
+        y += 28;
 
         // Mode selection
         var modeLabel = new Label
@@ -361,6 +411,82 @@ public class ConfigForm : Form
             };
             e.Graphics.DrawString(tabPage.Text, font, textBrush, tabBounds, sf);
         };
+    }
+
+    private void StartRecordingHotkey(PadActionType action)
+    {
+        _recordingAction = action;
+        _hotkeyLabels[action].Text = "Press keys...";
+        _hotkeyLabels[action].ForeColor = GreenAccent;
+        _hotkeyRecordButtons[action].Text = "[ CANCEL ]";
+        _hotkeyRecordButtons[action].ForeColor = DimText;
+    }
+
+    private void StopRecordingHotkey()
+    {
+        if (_recordingAction.HasValue)
+        {
+            var action = _recordingAction.Value;
+            _recordingAction = null;
+            RefreshHotkeyDisplay(action);
+        }
+    }
+
+    private void RefreshHotkeyDisplay(PadActionType action)
+    {
+        var config = _configStore.GetHotkeyConfig(action);
+        _hotkeyLabels[action].Text = config.DisplayString;
+        _hotkeyLabels[action].ForeColor = _configStore.HasCustomHotkey(action) ? BlueAccent : WhiteText;
+        _hotkeyRecordButtons[action].Text = "[ RECORD ]";
+        _hotkeyRecordButtons[action].ForeColor = GreenAccent;
+        _hotkeyResetButtons[action].Visible = _configStore.HasCustomHotkey(action);
+    }
+
+    private void OnFormKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!_recordingAction.HasValue) return;
+
+        var action = _recordingAction.Value;
+
+        // Escape cancels recording
+        if (e.KeyCode == Keys.Escape)
+        {
+            StopRecordingHotkey();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        // Ignore bare modifier presses
+        if (e.KeyCode == Keys.ControlKey || e.KeyCode == Keys.ShiftKey ||
+            e.KeyCode == Keys.Menu || e.KeyCode == Keys.LWin || e.KeyCode == Keys.RWin)
+        {
+            // Update display to show modifiers in real-time
+            uint mods = 0;
+            if (e.Control) mods |= HotkeyConfig.MOD_CONTROL;
+            if (e.Alt) mods |= HotkeyConfig.MOD_ALT;
+            if (e.Shift) mods |= HotkeyConfig.MOD_SHIFT;
+            var preview = new HotkeyConfig((uint)e.KeyCode, mods);
+            _hotkeyLabels[action].Text = mods > 0 ? preview.DisplayString.TrimEnd('+') + "..." : "Press keys...";
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        // Build modifier flags
+        uint modifiers = 0;
+        if (e.Control) modifiers |= HotkeyConfig.MOD_CONTROL;
+        if (e.Alt) modifiers |= HotkeyConfig.MOD_ALT;
+        if (e.Shift) modifiers |= HotkeyConfig.MOD_SHIFT;
+
+        var config = new HotkeyConfig((uint)e.KeyCode, modifiers);
+        _configStore.SetHotkeyConfig(config, action);
+
+        _recordingAction = null;
+        RefreshHotkeyDisplay(action);
+
+        e.Handled = true;
+        e.SuppressKeyPress = true;
     }
 
     /// <summary>

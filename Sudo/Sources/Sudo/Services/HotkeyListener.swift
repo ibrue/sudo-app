@@ -1,25 +1,47 @@
 import Cocoa
 import Carbon
 
-/// Listens for global Ctrl+Shift+F13–F16 hotkey events from the macro pad.
+/// Listens for global hotkey events from the macro pad.
 /// Uses CGEvent tap — the standard macOS approach for global hotkeys.
+/// Hotkey combos are configurable via ButtonConfigStore (defaults to Ctrl+Shift+F13-F16).
 final class HotkeyListener {
     typealias ActionHandler = (PadAction) -> Void
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var handler: ActionHandler?
+    private var configObserver: NSObjectProtocol?
 
-    private static let keyMap: [UInt16: PadAction] = {
-        var map = [UInt16: PadAction]()
+    /// Maps (keyCode, normalizedModifiers) -> PadAction, built from ButtonConfigStore.
+    private var keyMap: [UInt64: PadAction] = [:]
+
+    private static func mapKey(keyCode: UInt16, modifiers: UInt32) -> UInt64 {
+        return (UInt64(modifiers) << 16) | UInt64(keyCode)
+    }
+
+    private func buildKeyMap() {
+        var map = [UInt64: PadAction]()
+        let store = ButtonConfigStore.shared
         for action in PadAction.allCases {
-            map[action.keyCode] = action
+            let config = store.hotkeyConfig(for: action)
+            let key = Self.mapKey(keyCode: config.keyCode, modifiers: config.modifiers)
+            map[key] = action
         }
-        return map
-    }()
+        keyMap = map
+    }
 
     func start(handler: @escaping ActionHandler) {
         self.handler = handler
+        buildKeyMap()
+
+        // Listen for hotkey config changes to rebuild the map.
+        configObserver = NotificationCenter.default.addObserver(
+            forName: ButtonConfigStore.hotkeyConfigsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.rebuildKeyMap()
+        }
 
         let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
@@ -50,6 +72,10 @@ final class HotkeyListener {
     }
 
     func stop() {
+        if let observer = configObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configObserver = nil
+        }
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -61,17 +87,24 @@ final class HotkeyListener {
         handler = nil
     }
 
+    /// Rebuilds the key map when hotkey configuration changes.
+    /// The event tap itself does not need to be recreated — only the lookup table changes.
+    func rebuildKeyMap() {
+        buildKeyMap()
+        print("[sudo] Hotkey map rebuilt with updated config")
+    }
+
     private func handleEvent(_ event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-        let flags = event.flags
+        let modifiers = HotkeyConfig.normalizedModifiers(from: event.flags)
+        let key = Self.mapKey(keyCode: keyCode, modifiers: modifiers)
 
-        guard flags.contains(.maskControl),
-              flags.contains(.maskShift),
-              let action = Self.keyMap[keyCode] else {
+        guard let action = keyMap[key] else {
             return Unmanaged.passUnretained(event)
         }
 
-        print("[sudo] Received: \(action.displayName) (F\(action.fKeyNumber))")
+        let config = ButtonConfigStore.shared.hotkeyConfig(for: action)
+        print("[sudo] Received: \(action.displayName) (\(config.displayString))")
 
         DispatchQueue.main.async { [weak self] in
             self?.handler?(action)

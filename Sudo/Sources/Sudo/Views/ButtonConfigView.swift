@@ -6,6 +6,8 @@ struct ButtonConfigView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editingAction: PadAction?
     @State private var editText: String = ""
+    @State private var recordingHotkeyAction: PadAction?
+    @State private var hotkeyMonitor: Any?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -79,6 +81,9 @@ struct ButtonConfigView: View {
                 }
             }
 
+            // Hotkey binding
+            hotkeyRow(action)
+
             // Mode toggle
             modeToggle(action, mode: mode)
 
@@ -95,6 +100,91 @@ struct ButtonConfigView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private func hotkeyRow(_ action: PadAction) -> some View {
+        let config = configStore.hotkeyConfig(for: action)
+        let isRecording = recordingHotkeyAction == action
+        let isCustom = configStore.hotkeyConfigs[action.rawValue] != nil
+
+        HStack(spacing: 6) {
+            Text("hotkey:")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(Color(hex: 0x666666))
+
+            if isRecording {
+                Text("Press keys...")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color(hex: 0x00FF41))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(hex: 0x1A1A1A))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2)
+                            .stroke(Color(hex: 0x00FF41), lineWidth: 1)
+                    )
+
+                Button(action: { stopRecordingHotkey() }) {
+                    Text("cancel")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Color(hex: 0x666666))
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(config.displayString)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(isCustom ? Color(hex: 0x00BFFF) : Color(hex: 0x888888))
+
+                Button(action: { startRecordingHotkey(for: action) }) {
+                    Text("record")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Color(hex: 0x00FF41))
+                }
+                .buttonStyle(.plain)
+
+                if isCustom {
+                    Button(action: { configStore.resetHotkeyConfig(for: action) }) {
+                        Text("reset")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(Color(hex: 0xFF3333))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Spacer()
+        }
+    }
+
+    private func startRecordingHotkey(for action: PadAction) {
+        // Stop any existing recording
+        stopRecordingHotkey()
+
+        recordingHotkeyAction = action
+        hotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [self] event in
+            let keyCode = event.keyCode
+            let modifiers = HotkeyConfig.normalizedModifiers(from: CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue)))
+
+            // Ignore bare modifier presses and Escape to cancel
+            if keyCode == 53 { // Escape
+                stopRecordingHotkey()
+                return nil
+            }
+
+            let config = HotkeyConfig(keyCode: keyCode, modifiers: modifiers)
+            configStore.setHotkeyConfig(config, for: action)
+            stopRecordingHotkey()
+            return nil  // consume the event
+        }
+    }
+
+    private func stopRecordingHotkey() {
+        if let monitor = hotkeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            hotkeyMonitor = nil
+        }
+        recordingHotkeyAction = nil
     }
 
     @ViewBuilder

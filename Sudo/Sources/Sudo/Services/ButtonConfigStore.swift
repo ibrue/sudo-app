@@ -7,10 +7,15 @@ final class ButtonConfigStore: ObservableObject {
     private let defaults = UserDefaults.standard
     private let storageKey = "sudo.buttonSearchTerms"
     private let modesKey = "sudo.buttonModes"
+    private let hotkeysKey = "sudo.hotkeyConfigs"
 
     /// Published so SwiftUI views react to changes.
     @Published private(set) var customTerms: [String: [String]] = [:]
     @Published private(set) var buttonModes: [String: ButtonMode] = [:]
+    @Published private(set) var hotkeyConfigs: [String: HotkeyConfig] = [:]
+
+    /// Notification posted when hotkey configs change so the listener can rebuild.
+    static let hotkeyConfigsDidChange = Notification.Name("sudo.hotkeyConfigsDidChange")
 
     private init() {
         loadFromDefaults()
@@ -62,7 +67,30 @@ final class ButtonConfigStore: ObservableObject {
     /// Reset all actions back to defaults.
     func resetAllToDefaults() {
         customTerms.removeAll()
+        hotkeyConfigs.removeAll()
         saveToDefaults()
+        NotificationCenter.default.post(name: Self.hotkeyConfigsDidChange, object: nil)
+    }
+
+    // MARK: - Hotkey Config
+
+    /// Returns the hotkey config for a given action — custom if set, otherwise default (Ctrl+Shift+F13-F16).
+    func hotkeyConfig(for action: PadAction) -> HotkeyConfig {
+        return hotkeyConfigs[action.rawValue] ?? HotkeyConfig.defaultFor(action)
+    }
+
+    /// Sets a custom hotkey config for a given action.
+    func setHotkeyConfig(_ config: HotkeyConfig, for action: PadAction) {
+        hotkeyConfigs[action.rawValue] = config
+        saveToDefaults()
+        NotificationCenter.default.post(name: Self.hotkeyConfigsDidChange, object: nil)
+    }
+
+    /// Resets the hotkey config for a given action back to its default.
+    func resetHotkeyConfig(for action: PadAction) {
+        hotkeyConfigs.removeValue(forKey: action.rawValue)
+        saveToDefaults()
+        NotificationCenter.default.post(name: Self.hotkeyConfigsDidChange, object: nil)
     }
 
     private func loadFromDefaults() {
@@ -73,12 +101,19 @@ final class ButtonConfigStore: ObservableObject {
            let decoded = try? JSONDecoder().decode([String: ButtonMode].self, from: modeData) {
             buttonModes = decoded
         }
+        if let hotkeyData = defaults.data(forKey: hotkeysKey),
+           let decoded = try? JSONDecoder().decode([String: HotkeyConfig].self, from: hotkeyData) {
+            hotkeyConfigs = decoded
+        }
     }
 
     private func saveToDefaults() {
         defaults.set(customTerms, forKey: storageKey)
         if let encoded = try? JSONEncoder().encode(buttonModes) {
             defaults.set(encoded, forKey: modesKey)
+        }
+        if let encoded = try? JSONEncoder().encode(hotkeyConfigs) {
+            defaults.set(encoded, forKey: hotkeysKey)
         }
     }
 }

@@ -55,10 +55,11 @@ struct MenuBarView: View {
 
                 ForEach(PadAction.allCases, id: \.rawValue) { action in
                     HStack {
-                        Text("F\(action.fKeyNumber)")
+                        let hotkeyConfig = configStore.hotkeyConfig(for: action)
+                        Text(hotkeyConfig.displayString)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(Color(hex: 0x00FF41))
-                            .frame(width: 30, alignment: .leading)
+                            .frame(width: 56, alignment: .leading)
 
                         let mode = configStore.buttonMode(for: action)
                         if case .simple(let simpleAction) = mode {
