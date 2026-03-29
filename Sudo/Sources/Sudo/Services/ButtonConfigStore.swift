@@ -1,17 +1,32 @@
 import Foundation
 
-/// Persists per-button search term customization using UserDefaults.
+/// Persists per-button search term customization and button modes using UserDefaults.
 final class ButtonConfigStore: ObservableObject {
     static let shared = ButtonConfigStore()
 
     private let defaults = UserDefaults.standard
     private let storageKey = "sudo.buttonSearchTerms"
+    private let modesKey = "sudo.buttonModes"
 
     /// Published so SwiftUI views react to changes.
     @Published private(set) var customTerms: [String: [String]] = [:]
+    @Published private(set) var buttonModes: [String: ButtonMode] = [:]
 
     private init() {
         loadFromDefaults()
+    }
+
+    // MARK: - Button Mode
+
+    /// Returns the mode for a given action — defaults to `.complex`.
+    func buttonMode(for action: PadAction) -> ButtonMode {
+        return buttonModes[action.rawValue] ?? .complex
+    }
+
+    /// Sets the mode for a given action.
+    func setButtonMode(_ mode: ButtonMode, for action: PadAction) {
+        buttonModes[action.rawValue] = mode
+        saveToDefaults()
     }
 
     /// Returns the active search terms for a given action — custom if set, otherwise default.
@@ -54,9 +69,16 @@ final class ButtonConfigStore: ObservableObject {
         if let data = defaults.dictionary(forKey: storageKey) as? [String: [String]] {
             customTerms = data
         }
+        if let modeData = defaults.data(forKey: modesKey),
+           let decoded = try? JSONDecoder().decode([String: ButtonMode].self, from: modeData) {
+            buttonModes = decoded
+        }
     }
 
     private func saveToDefaults() {
         defaults.set(customTerms, forKey: storageKey)
+        if let encoded = try? JSONEncoder().encode(buttonModes) {
+            defaults.set(encoded, forKey: modesKey)
+        }
     }
 }

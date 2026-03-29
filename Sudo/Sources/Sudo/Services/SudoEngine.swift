@@ -12,7 +12,9 @@ final class SudoEngine: ObservableObject {
     private let axFinder = AXButtonFinder()
     private let ocrFinder = OCRButtonFinder()
     private let executor = ActionExecutor()
+    private let simpleExecutor = SimpleActionExecutor()
     private let hotkeyListener = HotkeyListener()
+    private let configStore = ButtonConfigStore.shared
 
     func start() {
         hotkeyListener.start { [weak self] action in
@@ -40,6 +42,27 @@ final class SudoEngine: ObservableObject {
     }
 
     private func handleAction(_ action: PadAction) {
+        let mode = configStore.buttonMode(for: action)
+
+        // Simple mode: simulate a keyboard shortcut directly
+        if case .simple(let simpleAction) = mode {
+            lastAction = "Processing: \(simpleAction.displayName)..."
+            print("[sudo] Simple action: \(simpleAction.displayName)")
+
+            let result = simpleExecutor.execute(simpleAction)
+            switch result {
+            case .success(let detail):
+                lastAction = simpleAction.displayName
+                lastMethod = "Shortcut → \(detail)"
+                print("[sudo] OK: \(simpleAction.displayName) via shortcut")
+            case .failure(let reason):
+                lastAction = "\(simpleAction.displayName) — failed"
+                lastMethod = "Shortcut: \(reason)"
+            }
+            return
+        }
+
+        // Complex mode: AX tree + OCR flow
         lastAction = "Processing: \(action.displayName)..."
 
         guard let app = appDetector.detectFrontmostApp() else {

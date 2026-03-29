@@ -59,13 +59,21 @@ struct MenuBarView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(Color(hex: 0x00FF41))
                             .frame(width: 30, alignment: .leading)
-                        Text(action.displayName)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.white)
-                        if configStore.isCustomized(action) {
-                            Text("*")
+
+                        let mode = configStore.buttonMode(for: action)
+                        if case .simple(let simpleAction) = mode {
+                            Text(simpleAction.displayName)
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundColor(Color(hex: 0x00BFFF))
+                        } else {
+                            Text(action.displayName)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.white)
+                            if configStore.isCustomized(action) {
+                                Text("*")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(Color(hex: 0x00BFFF))
+                            }
                         }
                     }
                 }

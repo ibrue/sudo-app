@@ -57,7 +57,10 @@ struct ButtonConfigView: View {
 
     @ViewBuilder
     private func actionRow(_ action: PadAction) -> some View {
+        let mode = configStore.buttonMode(for: action)
+
         VStack(alignment: .leading, spacing: 6) {
+            // Key label + action name
             HStack {
                 Text("F\(action.fKeyNumber)")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -66,7 +69,7 @@ struct ButtonConfigView: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.white)
                 Spacer()
-                if configStore.isCustomized(action) {
+                if case .complex = mode, configStore.isCustomized(action) {
                     Button(action: { configStore.resetToDefaults(action) }) {
                         Text("reset")
                             .font(.system(size: 9, design: .monospaced))
@@ -76,14 +79,95 @@ struct ButtonConfigView: View {
                 }
             }
 
-            if editingAction == action {
-                editField(action)
+            // Mode toggle
+            modeToggle(action, mode: mode)
+
+            // Mode-specific content
+            if case .simple = mode {
+                simpleActionPicker(action, mode: mode)
             } else {
-                termsDisplay(action)
+                if editingAction == action {
+                    editField(action)
+                } else {
+                    termsDisplay(action)
+                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private func modeToggle(_ action: PadAction, mode: ButtonMode) -> some View {
+        HStack(spacing: 0) {
+            Button(action: {
+                configStore.setButtonMode(.simple(.copy), for: action)
+            }) {
+                Text("SIMPLE")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(mode.isSimple ? Color(hex: 0x0A0A0A) : Color(hex: 0x666666))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(mode.isSimple ? Color(hex: 0x00FF41) : Color.clear)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: {
+                configStore.setButtonMode(.complex, for: action)
+            }) {
+                Text("COMPLEX")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(!mode.isSimple ? Color(hex: 0x0A0A0A) : Color(hex: 0x666666))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(!mode.isSimple ? Color(hex: 0x00FF41) : Color.clear)
+            }
+            .buttonStyle(.plain)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 2)
+                .stroke(Color(hex: 0x333333), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func simpleActionPicker(_ action: PadAction, mode: ButtonMode) -> some View {
+        let selectedAction: SimpleAction? = {
+            if case .simple(let a) = mode { return a }
+            return nil
+        }()
+
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(SimpleAction.categories, id: \.self) { category in
+                Text(category.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color(hex: 0x666666))
+                    .padding(.top, 2)
+
+                let actions = SimpleAction.actions(in: category)
+                let columns = [GridItem(.adaptive(minimum: 80), spacing: 4)]
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
+                    ForEach(actions, id: \.rawValue) { simpleAction in
+                        Button(action: {
+                            configStore.setButtonMode(.simple(simpleAction), for: action)
+                        }) {
+                            Text(simpleAction.displayName)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(selectedAction == simpleAction ? Color(hex: 0x0A0A0A) : Color(hex: 0x00FF41))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(selectedAction == simpleAction ? Color(hex: 0x00FF41) : Color(hex: 0x1A1A1A))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .stroke(Color(hex: 0x333333), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder
