@@ -39,7 +39,7 @@ public class TrayApp : ApplicationContext
         _trayIcon = new NotifyIcon
         {
             Icon = CreateTrayIcon(),
-            Text = "[sudo] - Macro Pad Companion",
+            Text = "[sudo]",
             Visible = true,
             ContextMenuStrip = _contextMenu
         };
@@ -218,25 +218,28 @@ public class TrayApp : ApplicationContext
     }
 
     /// <summary>
-    /// Creates a simple green [S] icon programmatically.
+    /// Creates a pixel-perfect [] brackets icon on a black background.
     /// </summary>
     private static Icon CreateTrayIcon()
     {
         var bmp = new Bitmap(16, 16);
         using (var g = Graphics.FromImage(bmp))
         {
-            g.Clear(Color.Transparent);
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            // Black square background filling the full 16x16
+            g.Clear(Color.Black);
 
-            // Green terminal-style icon
-            using var brush = new SolidBrush(GreenAccent);
-            using var font = new Font("Consolas", 10, FontStyle.Bold);
-            var sf = new StringFormat
-            {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center
-            };
-            g.DrawString("S", font, brush, new RectangleF(0, 0, 16, 16), sf);
+            // Draw white "[]" brackets as rectangles for crispness
+            using var white = new SolidBrush(Color.White);
+
+            // Left bracket "[" — vertical bar + top/bottom serifs
+            g.FillRectangle(white, 3, 3, 2, 10);   // vertical stroke
+            g.FillRectangle(white, 3, 3, 4, 2);     // top serif
+            g.FillRectangle(white, 3, 11, 4, 2);    // bottom serif
+
+            // Right bracket "]" — vertical bar + top/bottom serifs
+            g.FillRectangle(white, 11, 3, 2, 10);   // vertical stroke
+            g.FillRectangle(white, 9, 3, 4, 2);     // top serif
+            g.FillRectangle(white, 9, 11, 4, 2);    // bottom serif
         }
 
         return Icon.FromHandle(bmp.GetHicon());

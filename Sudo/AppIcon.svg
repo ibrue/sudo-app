@@ -1,42 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 272 56" fill="none">
-  <!--
-    Pixel-art [sudo] logo
-    Each pixel block = 8x8 units
-    Grid: 34 cols × 7 rows
-  -->
-  <g fill="currentColor">
-    <!-- [ left bracket -->
-    <rect x="0"  y="0"  width="8"  height="56"/>
-    <rect x="8"  y="0"  width="16" height="8"/>
-    <rect x="8"  y="48" width="16" height="8"/>
-
-    <!-- S -->
-    <rect x="40" y="0"  width="32" height="8"/>
-    <rect x="40" y="8"  width="8"  height="16"/>
-    <rect x="40" y="24" width="32" height="8"/>
-    <rect x="64" y="32" width="8"  height="16"/>
-    <rect x="40" y="48" width="32" height="8"/>
-
-    <!-- U -->
-    <rect x="88" y="0"  width="8"  height="48"/>
-    <rect x="88" y="48" width="32" height="8"/>
-    <rect x="112" y="0" width="8"  height="48"/>
-
-    <!-- D -->
-    <rect x="136" y="0" width="8"  height="56"/>
-    <rect x="144" y="0" width="16" height="8"/>
-    <rect x="160" y="8" width="8"  height="40"/>
-    <rect x="144" y="48" width="16" height="8"/>
-
-    <!-- O -->
-    <rect x="184" y="0"  width="32" height="8"/>
-    <rect x="184" y="8"  width="8"  height="40"/>
-    <rect x="208" y="8"  width="8"  height="40"/>
-    <rect x="184" y="48" width="32" height="8"/>
-
-    <!-- ] right bracket -->
-    <rect x="232" y="0"  width="16" height="8"/>
-    <rect x="232" y="48" width="16" height="8"/>
-    <rect x="240" y="0"  width="8"  height="56"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Black rounded-rect background -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="#000000"/>
+  <!-- Left bracket [ -->
+  <path d="M290,240 L450,240 L450,320 L370,320 L370,704 L450,704 L450,784 L290,784 Z" fill="#FFFFFF"/>
+  <!-- Right bracket ] -->
+  <path d="M574,240 L734,240 L734,784 L574,784 L574,704 L654,704 L654,320 L574,320 Z" fill="#FFFFFF"/>
 </svg>

@@ -24,6 +24,7 @@ struct SudoApp: App {
         .menuBarExtraStyle(.window)
         .onChange(of: engine.isConnected) { _, _ in }
         .onAppear {
+            NSApplication.shared.applicationIconImage = AppIconGenerator.makeIcon()
             engine.start()
             updater.startPeriodicChecks()
             checkAccessibilityPermission()

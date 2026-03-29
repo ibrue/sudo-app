@@ -31,6 +31,29 @@ mkdir -p "$MACOS" "$RESOURCES"
 # Copy binary
 cp "$BINARY" "$MACOS/$APP_NAME"
 
+# Generate app icon (.icns) from SVG
+echo "[sudo] Generating app icon..."
+ICON_SVG="$SCRIPT_DIR/Sudo/AppIcon.svg"
+ICON_TMP="$SCRIPT_DIR/Sudo/.build/icon_tmp"
+ICONSET="$ICON_TMP/AppIcon.iconset"
+rm -rf "$ICON_TMP"
+mkdir -p "$ICONSET"
+
+# Render SVG to 1024x1024 PNG (sips can convert from SVG on macOS)
+sips -s format png -z 1024 1024 "$ICON_SVG" --out "$ICON_TMP/icon_1024.png" >/dev/null 2>&1
+
+# Generate all required icon sizes
+for SIZE in 16 32 128 256 512; do
+    sips -z $SIZE $SIZE "$ICON_TMP/icon_1024.png" --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null 2>&1
+    DOUBLE=$((SIZE * 2))
+    sips -z $DOUBLE $DOUBLE "$ICON_TMP/icon_1024.png" --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null 2>&1
+done
+
+# Create .icns and copy to Resources
+iconutil -c icns "$ICONSET" -o "$RESOURCES/AppIcon.icns"
+rm -rf "$ICON_TMP"
+echo "[sudo] App icon created."
+
 # Create Info.plist
 cat > "$CONTENTS/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
