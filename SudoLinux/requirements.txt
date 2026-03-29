@@ -3,3 +3,4 @@ PyGObject>=3.42.0
 python-xlib>=0.33
 pytesseract>=0.3.10
 Pillow>=10.0.0
+pyudev>=0.24.0

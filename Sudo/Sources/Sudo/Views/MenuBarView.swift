@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
+    @ObservedObject var usbMonitor: USBDeviceMonitor
     @ObservedObject var configStore: ButtonConfigStore = .shared
     @State private var showingConfig = false
 
@@ -24,6 +25,21 @@ struct MenuBarView: View {
 
             divider
 
+            // Device status
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(usbMonitor.isDeviceConnected ? Color(hex: 0x00FF41) : Color(hex: 0xFF3333))
+                    .frame(width: 6, height: 6)
+                Text(usbMonitor.isDeviceConnected ? "Device: Connected" : "Device: Disconnected")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(usbMonitor.isDeviceConnected ? Color(hex: 0x00FF41) : Color(hex: 0xFF3333))
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            divider
+
             // Status
             VStack(alignment: .leading, spacing: 6) {
                 statusRow(label: "app", value: engine.detectedApp)
@@ -34,6 +50,29 @@ struct MenuBarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+
+            // Prominent test mode CTA when device is disconnected
+            if !usbMonitor.isDeviceConnected {
+                VStack(spacing: 4) {
+                    Text("No device detected — use test mode:")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Color(hex: 0x666666))
+                    Button(action: { TestPadWindowController.shared.showWindow(engine: engine) }) {
+                        Text("[ OPEN TEST PAD ]")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color(hex: 0x00FF41))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 0)
+                                    .stroke(Color(hex: 0x00FF41), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+            }
 
             divider
 
@@ -129,14 +168,25 @@ struct MenuBarView: View {
 
             // Footer
             HStack {
-                Button("Check for Updates") {
+                Button("Test Mode") {
+                    TestPadWindowController.shared.showWindow(engine: engine)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(Color(hex: 0x00FF41))
+
+                Spacer()
+
+                Button("Updates") {
                     updater.checkForUpdates()
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(Color(hex: 0x666666))
 
-                Spacer()
+                Text("·")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(Color(hex: 0x333333))
 
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)

@@ -13,21 +13,44 @@ import Cocoa
 struct SudoApp: App {
     @StateObject private var engine = SudoEngine()
     @StateObject private var updater = OTAUpdater()
+    @StateObject private var usbMonitor = USBDeviceMonitor()
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(engine: engine, updater: updater)
+            MenuBarView(engine: engine, updater: updater, usbMonitor: usbMonitor)
         } label: {
             Text("[sudo]")
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: engine.isConnected) { _, _ in }
+        .onChange(of: usbMonitor.isDeviceConnected) { _, connected in
+            if connected {
+                engine.deviceConnected()
+            } else {
+                engine.deviceDisconnected()
+            }
+        }
         .onAppear {
             NSApplication.shared.applicationIconImage = AppIconGenerator.makeIcon()
-            engine.start()
+
+            // Wire up USB monitor callbacks
+            usbMonitor.onDeviceConnected = { [weak engine] in
+                engine?.deviceConnected()
+            }
+            usbMonitor.onDeviceDisconnected = { [weak engine] in
+                engine?.deviceDisconnected()
+            }
+
+            // Only start hotkey listener if device is already connected
+            if usbMonitor.isDeviceConnected {
+                engine.start()
+            }
+
             updater.startPeriodicChecks()
             checkAccessibilityPermission()
+
+            // Start the app detection timer regardless of device state (for test mode)
+            engine.startAppDetection()
         }
     }
 

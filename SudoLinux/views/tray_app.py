@@ -31,6 +31,7 @@ class TrayApp:
         self._engine = SudoEngine()
         self._config_store = ButtonConfigStore.shared()
         self._config_window = None
+        self._test_pad_window = None
         self._menu_items = {}
 
         # Create tray icon
@@ -73,9 +74,13 @@ class TrayApp:
         menu.append(Gtk.SeparatorMenuItem())
 
         # Status section
-        self._menu_items["status"] = Gtk.MenuItem(label="Status: Connected")
+        self._menu_items["status"] = Gtk.MenuItem(label="Status: Checking...")
         self._menu_items["status"].set_sensitive(False)
         menu.append(self._menu_items["status"])
+
+        self._menu_items["device"] = Gtk.MenuItem(label="Device: Checking...")
+        self._menu_items["device"].set_sensitive(False)
+        menu.append(self._menu_items["device"])
 
         self._menu_items["app"] = Gtk.MenuItem(label="app: No AI app detected")
         self._menu_items["app"].set_sensitive(False)
@@ -109,6 +114,11 @@ class TrayApp:
 
         menu.append(Gtk.SeparatorMenuItem())
 
+        # Test Mode
+        self._menu_items["test_mode"] = Gtk.MenuItem(label="Test Mode (Virtual Pad)...")
+        self._menu_items["test_mode"].connect("activate", self._on_test_mode)
+        menu.append(self._menu_items["test_mode"])
+
         # Configure Buttons
         config_item = Gtk.MenuItem(label="Configure Buttons...")
         config_item.connect("activate", self._on_configure)
@@ -136,6 +146,19 @@ class TrayApp:
         """Update the status display in the menu."""
         status_text = "Status: Connected" if self._engine.is_connected else "Status: Disconnected"
         self._menu_items["status"].set_label(status_text)
+
+        # Device connection state
+        if self._engine.is_device_connected:
+            self._menu_items["device"].set_label("Device: Sudo Pad connected")
+        else:
+            self._menu_items["device"].set_label("Device: Not connected (use Test Mode)")
+
+        # Make Test Mode label more prominent when device is disconnected
+        if not self._engine.is_device_connected:
+            self._menu_items["test_mode"].set_label(">>> Test Mode (Virtual Pad) <<<")
+        else:
+            self._menu_items["test_mode"].set_label("Test Mode (Virtual Pad)...")
+
         self._menu_items["app"].set_label(f"app: {self._engine.detected_app}")
         self._menu_items["last"].set_label(f"last: {self._engine.last_action}")
 
@@ -152,6 +175,21 @@ class TrayApp:
                 if self._config_store.is_customized(action):
                     label += " *"
                 self._menu_items[key].set_label(label)
+
+    def _on_test_mode(self, _widget):
+        """Open the virtual macro pad test window."""
+        if self._test_pad_window is not None:
+            self._test_pad_window.present()
+            return
+
+        from views.test_pad_window import TestPadWindow
+        self._test_pad_window = TestPadWindow(self._engine)
+        self._test_pad_window.connect("destroy", self._on_test_pad_closed)
+        self._test_pad_window.show_all()
+
+    def _on_test_pad_closed(self, _widget):
+        """Handle test pad window being closed."""
+        self._test_pad_window = None
 
     def _on_configure(self, _widget):
         """Open the configuration window."""

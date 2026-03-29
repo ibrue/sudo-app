@@ -16,12 +16,15 @@ public class TrayApp : ApplicationContext
     private readonly SudoEngine _engine;
     private readonly ContextMenuStrip _contextMenu;
     private ConfigForm? _configForm;
+    private TestPadForm? _testPadForm;
 
     // Menu items that get updated
     private ToolStripMenuItem _statusItem = null!;
+    private ToolStripMenuItem _deviceItem = null!;
     private ToolStripMenuItem _appItem = null!;
     private ToolStripMenuItem _lastActionItem = null!;
     private ToolStripMenuItem _lastMethodItem = null!;
+    private ToolStripMenuItem _testModeItem = null!;
 
     // Dark theme colors
     private static readonly Color BgColor = Color.FromArgb(0x0A, 0x0A, 0x0A);
@@ -75,6 +78,14 @@ public class TrayApp : ApplicationContext
             ForeColor = DimText,
         };
         menu.Items.Add(_statusItem);
+
+        _deviceItem = new ToolStripMenuItem("Device: Checking...")
+        {
+            Enabled = false,
+            Font = new Font("Consolas", 9),
+            ForeColor = DimText,
+        };
+        menu.Items.Add(_deviceItem);
 
         _appItem = new ToolStripMenuItem("app: No AI app detected")
         {
@@ -139,6 +150,15 @@ public class TrayApp : ApplicationContext
         configItem.Click += (_, _) => OpenConfig();
         menu.Items.Add(configItem);
 
+        // Test Mode
+        _testModeItem = new ToolStripMenuItem("Test Mode")
+        {
+            Font = new Font("Consolas", 9),
+            ForeColor = GreenAccent,
+        };
+        _testModeItem.Click += (_, _) => OpenTestPad();
+        menu.Items.Add(_testModeItem);
+
         // Check for Updates
         var updateItem = new ToolStripMenuItem("Check for Updates")
         {
@@ -195,11 +215,22 @@ public class TrayApp : ApplicationContext
         _statusItem.Text = _engine.IsConnected ? "Status: Connected" : "Status: Disconnected";
         _statusItem.ForeColor = _engine.IsConnected ? GreenAccent : Color.FromArgb(0xFF, 0x33, 0x33);
 
+        bool deviceConnected = _engine.IsDeviceConnected;
+        _deviceItem.Text = deviceConnected ? "Device: Connected" : "Device: Disconnected";
+        _deviceItem.ForeColor = deviceConnected ? GreenAccent : Color.FromArgb(0xFF, 0x33, 0x33);
+
+        // Make Test Mode more prominent when device is disconnected
+        _testModeItem.ForeColor = deviceConnected ? GreenAccent : BlueAccent;
+        _testModeItem.Font = deviceConnected
+            ? new Font("Consolas", 9)
+            : new Font("Consolas", 9, FontStyle.Bold);
+
         _appItem.Text = $"app: {_engine.DetectedApp}";
         _lastActionItem.Text = $"last: {_engine.LastAction}";
         _lastMethodItem.Text = string.IsNullOrEmpty(_engine.LastMethod) ? "via: -" : $"via: {_engine.LastMethod}";
 
-        _trayIcon.Text = $"[sudo] {_engine.LastAction}";
+        string deviceStatus = deviceConnected ? "Connected" : "Disconnected";
+        _trayIcon.Text = $"[sudo] Device: {deviceStatus} | {_engine.LastAction}";
         if (_trayIcon.Text.Length > 63)
             _trayIcon.Text = _trayIcon.Text[..63];
     }
@@ -216,6 +247,20 @@ public class TrayApp : ApplicationContext
         _configForm = new ConfigForm();
         _configForm.FormClosed += (_, _) => _configForm = null;
         _configForm.Show();
+    }
+
+    private void OpenTestPad()
+    {
+        if (_testPadForm != null && !_testPadForm.IsDisposed)
+        {
+            _testPadForm.BringToFront();
+            _testPadForm.Focus();
+            return;
+        }
+
+        _testPadForm = new TestPadForm(_engine);
+        _testPadForm.FormClosed += (_, _) => _testPadForm = null;
+        _testPadForm.Show();
     }
 
     /// <summary>

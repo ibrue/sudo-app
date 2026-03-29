@@ -13,6 +13,7 @@ public class SudoEngine : IDisposable
     public string LastMethod { get; private set; } = "";
     public string DetectedApp { get; private set; } = "No AI app detected";
     public bool IsConnected { get; private set; }
+    public bool IsDeviceConnected => _usbMonitor.IsDeviceConnected;
 
     public event Action? StatusChanged;
 
@@ -23,14 +24,27 @@ public class SudoEngine : IDisposable
     private readonly SimpleActionExecutor _simpleExecutor = new();
     private readonly HotkeyListener _hotkeyListener = new();
     private readonly ButtonConfigStore _configStore = ButtonConfigStore.Shared;
+    private readonly USBDeviceMonitor _usbMonitor = new();
     private System.Windows.Forms.Timer? _appDetectionTimer;
     private bool _disposed;
 
     public void Start()
     {
-        _hotkeyListener.HotkeyPressed += HandleAction;
-        _hotkeyListener.Start();
-        IsConnected = true;
+        // Start USB device monitoring
+        _usbMonitor.DeviceConnected += OnDeviceConnected;
+        _usbMonitor.DeviceDisconnected += OnDeviceDisconnected;
+        _usbMonitor.Start();
+
+        // Only start hotkey listener if device is already connected
+        if (_usbMonitor.IsDeviceConnected)
+        {
+            StartHotkeyListener();
+        }
+        else
+        {
+            LastAction = "Device disconnected";
+            LastMethod = "Connect Sudo Pad or use Test Mode";
+        }
 
         // Poll for foreground app every second (like macOS version)
         _appDetectionTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -40,16 +54,57 @@ public class SudoEngine : IDisposable
         StatusChanged?.Invoke();
     }
 
+    private void OnDeviceConnected()
+    {
+        StartHotkeyListener();
+        LastAction = "Device connected";
+        LastMethod = "";
+        StatusChanged?.Invoke();
+    }
+
+    private void OnDeviceDisconnected()
+    {
+        StopHotkeyListener();
+        LastAction = "Device disconnected";
+        LastMethod = "Connect Sudo Pad or use Test Mode";
+        StatusChanged?.Invoke();
+    }
+
+    private void StartHotkeyListener()
+    {
+        _hotkeyListener.HotkeyPressed += HandleAction;
+        _hotkeyListener.Start();
+        IsConnected = true;
+    }
+
+    private void StopHotkeyListener()
+    {
+        _hotkeyListener.HotkeyPressed -= HandleAction;
+        _hotkeyListener.Stop();
+        IsConnected = false;
+    }
+
     public void Stop()
     {
         _appDetectionTimer?.Stop();
         _appDetectionTimer?.Dispose();
         _appDetectionTimer = null;
 
-        _hotkeyListener.HotkeyPressed -= HandleAction;
-        _hotkeyListener.Stop();
-        IsConnected = false;
+        _usbMonitor.DeviceConnected -= OnDeviceConnected;
+        _usbMonitor.DeviceDisconnected -= OnDeviceDisconnected;
+        _usbMonitor.Dispose();
+
+        StopHotkeyListener();
         StatusChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Simulates a pad action programmatically (used by Test Mode).
+    /// Works regardless of device connection status.
+    /// </summary>
+    public void SimulateAction(PadActionType action)
+    {
+        HandleAction(action);
     }
 
     private void UpdateDetectedApp()

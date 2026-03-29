@@ -15,21 +15,27 @@ final class SudoEngine: ObservableObject {
     private let simpleExecutor = SimpleActionExecutor()
     private let hotkeyListener = HotkeyListener()
     private let configStore = ButtonConfigStore.shared
+    private var appDetectionTimer: Timer?
 
     func start() {
         hotkeyListener.start { [weak self] action in
             self?.handleAction(action)
         }
         isConnected = true
-
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.updateDetectedApp()
-        }
+        startAppDetection()
     }
 
     func stop() {
         hotkeyListener.stop()
         isConnected = false
+    }
+
+    /// Starts the periodic app detection timer (safe to call multiple times).
+    func startAppDetection() {
+        guard appDetectionTimer == nil else { return }
+        appDetectionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.updateDetectedApp()
+        }
     }
 
     private func updateDetectedApp() {
@@ -39,6 +45,34 @@ final class SudoEngine: ObservableObject {
         } else {
             DispatchQueue.main.async { self.detectedApp = "No AI app detected" }
         }
+    }
+
+    // MARK: - Device lifecycle
+
+    /// Called when the USB device connects. Starts the hotkey listener.
+    func deviceConnected() {
+        guard !isConnected else { return }
+        hotkeyListener.start { [weak self] action in
+            self?.handleAction(action)
+        }
+        isConnected = true
+        print("[sudo] Engine: device connected, hotkey listener started")
+    }
+
+    /// Called when the USB device disconnects. Stops the hotkey listener
+    /// but keeps the engine alive for test mode.
+    func deviceDisconnected() {
+        hotkeyListener.stop()
+        isConnected = false
+        lastAction = "Device disconnected"
+        lastMethod = ""
+        print("[sudo] Engine: device disconnected, hotkey listener stopped")
+    }
+
+    /// Public entry point so the test pad can trigger actions without the physical device.
+    func simulateAction(_ action: PadAction) {
+        print("[sudo] Simulated action: \(action.displayName)")
+        handleAction(action)
     }
 
     private func handleAction(_ action: PadAction) {

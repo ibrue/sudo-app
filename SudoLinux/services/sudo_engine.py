@@ -10,6 +10,7 @@ from services.action_executor import ActionExecutor
 from services.simple_action_executor import SimpleActionExecutor
 from services.hotkey_listener import HotkeyListener
 from services.button_config_store import ButtonConfigStore
+from services.usb_device_monitor import USBDeviceMonitor
 
 
 class SudoEngine:
@@ -29,9 +30,15 @@ class SudoEngine:
         self._simple_executor = SimpleActionExecutor()
         self._hotkey_listener = HotkeyListener()
         self._config_store = ButtonConfigStore.shared()
+        self._usb_monitor = USBDeviceMonitor()
         self._status_callbacks = []
         self._app_poll_timer = None
         self._running = False
+
+    @property
+    def is_device_connected(self):
+        """Whether the physical Sudo Pad USB device is connected."""
+        return self._usb_monitor.is_device_connected
 
     def on_status_change(self, callback):
         """Register a callback to be called when status changes."""
@@ -46,10 +53,21 @@ class SudoEngine:
                 pass
 
     def start(self):
-        """Start the engine: begin listening for hotkeys and polling for apps."""
-        self._hotkey_listener.start(self._handle_action)
-        self.is_connected = True
+        """Start the engine: begin USB monitoring and polling for apps."""
         self._running = True
+
+        # Set up USB device monitoring callbacks
+        self._usb_monitor.on_device_connected(self._on_device_connected)
+        self._usb_monitor.on_device_disconnected(self._on_device_disconnected)
+        self._usb_monitor.start()
+
+        # If device is already connected, start hotkey listener
+        if self._usb_monitor.is_device_connected:
+            self._hotkey_listener.start(self._handle_action)
+            self.is_connected = True
+        else:
+            self.is_connected = False
+
         self._notify_status()
 
         # Start app detection polling
@@ -58,10 +76,36 @@ class SudoEngine:
     def stop(self):
         """Stop the engine."""
         self._running = False
+        self._usb_monitor.stop()
         self._hotkey_listener.stop()
         self.is_connected = False
         if self._app_poll_timer is not None:
             self._app_poll_timer.cancel()
+        self._notify_status()
+
+    def simulate_action(self, action):
+        """Simulate a pad action (used by test mode).
+
+        Args:
+            action: PadAction to simulate.
+        """
+        print(f"[sudo] Simulating action: {action.display_name}")
+        threading.Thread(
+            target=self._handle_action, args=(action,), daemon=True
+        ).start()
+
+    def _on_device_connected(self):
+        """Called when the Sudo Pad USB device is plugged in."""
+        self._hotkey_listener.start(self._handle_action)
+        self.is_connected = True
+        self._notify_status()
+
+    def _on_device_disconnected(self):
+        """Called when the Sudo Pad USB device is unplugged."""
+        self._hotkey_listener.stop()
+        self.is_connected = False
+        self.last_action = "Device disconnected"
+        self.last_method = ""
         self._notify_status()
 
     def _poll_app(self):
