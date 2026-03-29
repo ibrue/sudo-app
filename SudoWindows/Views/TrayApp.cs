@@ -114,7 +114,8 @@ public class TrayApp : ApplicationContext
         var configStore = ButtonConfigStore.Shared;
         foreach (var action in PadAction.AllActions)
         {
-            string label = $"F{action.GetFKeyNumber()}  {action.GetDisplayName()}";
+            var hotkeyConfig = configStore.GetHotkeyConfig(action);
+            string label = $"{hotkeyConfig.DisplayString}  {action.GetDisplayName()}";
             if (configStore.IsCustomized(action))
                 label += " *";
 
