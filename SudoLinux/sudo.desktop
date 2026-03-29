@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=[sudo]
+Comment=Macro pad companion for AI agents
+Exec=python3 /opt/sudo-app/sudo_app.py
+Icon=sudo
+Type=Application
+Categories=Utility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
