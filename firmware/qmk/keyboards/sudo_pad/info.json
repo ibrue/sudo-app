@@ -1,0 +1,35 @@
+{
+    "keyboard_name": "Sudo Pad",
+    "manufacturer": "sudo",
+    "url": "",
+    "maintainer": "sudo",
+    "usb": {
+        "vid": "0x5D00",
+        "pid": "0x5D01",
+        "device_version": "0.0.1"
+    },
+    "processor": "RP2040",
+    "bootloader": "rp2040",
+    "diode_direction": "COL2ROW",
+    "matrix_pins": {
+        "direct": [
+            ["GP0", "GP1"],
+            ["GP2", "GP3"]
+        ]
+    },
+    "features": {
+        "bootmagic": true,
+        "extrakey": true,
+        "nkro": true
+    },
+    "layouts": {
+        "LAYOUT_ortho_2x2": {
+            "layout": [
+                {"matrix": [0, 0], "x": 0, "y": 0},
+                {"matrix": [0, 1], "x": 1, "y": 0},
+                {"matrix": [1, 0], "x": 0, "y": 1},
+                {"matrix": [1, 1], "x": 1, "y": 1}
+            ]
+        }
+    }
+}
