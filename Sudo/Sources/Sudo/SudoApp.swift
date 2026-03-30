@@ -1,14 +1,6 @@
 import SwiftUI
 import Cocoa
 
-/// Sudo — macOS menu bar companion for the sudo macro pad.
-///
-/// Listens for Ctrl+Shift+F13–F16 from the RP2040 macro pad and
-/// translates them into approve/reject actions on Claude, ChatGPT, and Grok.
-///
-/// Detection: AX accessibility tree (primary) + Vision OCR (fallback)
-/// Execution: AXUIElement.performAction (no synthetic input, anti-cheat safe)
-/// Updates: OTA via GitHub Releases
 @main
 struct SudoApp: App {
     @StateObject private var engine = SudoEngine()
@@ -27,6 +19,13 @@ struct SudoApp: App {
                 .font(SudoTheme.mono(size: 9, weight: .medium))
         }
         .menuBarExtraStyle(.window)
+
+        // Test window — a fake AI prompt with Allow/Deny buttons
+        Window("sudo test prompt", id: "test-prompt") {
+            TestPromptView()
+        }
+        .defaultSize(width: 480, height: 320)
+        .windowStyle(.hiddenTitleBar)
     }
 
     private func checkAccessibilityPermission() {

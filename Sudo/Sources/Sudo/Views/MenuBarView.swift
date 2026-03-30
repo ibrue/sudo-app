@@ -4,6 +4,7 @@ struct MenuBarView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
     @State private var showTestPanel = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -101,6 +102,20 @@ struct MenuBarView: View {
                             .buttonStyle(.plain)
                         }
                     }
+
+                    Button(action: { openWindow(id: "test-prompt") }) {
+                        Text("[ OPEN TEST WINDOW ]")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.accent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .overlay(
+                                Rectangle()
+                                    .stroke(SudoTheme.border, lineWidth: SudoTheme.borderWidth)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
