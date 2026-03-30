@@ -22,6 +22,10 @@ final class AppDetector {
             return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil)
         }
 
+        if SupportedApp.editorBundleIDs.contains(bundleID) {
+            return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil)
+        }
+
         if SupportedApp.browserBundleIDs.contains(bundleID) {
             if let domain = detectAIDomainInBrowser(pid: pid) {
                 return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: true, matchedDomain: domain)
