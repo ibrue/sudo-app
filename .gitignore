@@ -2,3 +2,6 @@
 .build/
 dist/
 *.dmg
+*.icns
+*.iconset/
+icon_1024.png

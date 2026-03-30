@@ -31,6 +31,15 @@ mkdir -p "$MACOS" "$RESOURCES"
 # Copy binary
 cp "$BINARY" "$MACOS/$APP_NAME"
 
+# Generate and copy app icon
+cd "$SCRIPT_DIR/Sudo"
+bash generate-icon.sh
+if [ -f "AppIcon.icns" ]; then
+    cp AppIcon.icns "$RESOURCES/AppIcon.icns"
+    echo "[sudo] App icon copied"
+fi
+cd "$SCRIPT_DIR"
+
 # Create Info.plist
 cat > "$CONTENTS/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
