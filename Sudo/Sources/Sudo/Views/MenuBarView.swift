@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
+    @State private var showTestPanel = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -52,6 +53,68 @@ struct MenuBarView: View {
                             .font(SudoTheme.mono(size: 11))
                             .foregroundColor(SudoTheme.text)
                     }
+                }
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 10)
+
+            // Test panel
+            divider
+
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: { showTestPanel.toggle() }) {
+                    HStack {
+                        Text("> test panel")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                        Spacer()
+                        Text(showTestPanel ? "▾" : "▸")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showTestPanel {
+                    Text("Click to simulate button presses:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                        .padding(.bottom, 2)
+
+                    HStack(spacing: 6) {
+                        ForEach(PadAction.allCases, id: \.rawValue) { action in
+                            Button(action: { engine.triggerAction(action) }) {
+                                VStack(spacing: 2) {
+                                    Text("F\(action.fKeyNumber)")
+                                        .font(SudoTheme.mono(size: 10, weight: .bold))
+                                    Text(action.rawValue)
+                                        .font(SudoTheme.mono(size: 8))
+                                }
+                                .foregroundColor(SudoTheme.accent)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .overlay(
+                                    Rectangle()
+                                        .stroke(SudoTheme.accent, lineWidth: SudoTheme.borderWidth)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Button(action: { TestWindowManager.shared.open() }) {
+                        Text("[ OPEN TEST WINDOW ]")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.accent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .overlay(
+                                Rectangle()
+                                    .stroke(SudoTheme.border, lineWidth: SudoTheme.borderWidth)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
