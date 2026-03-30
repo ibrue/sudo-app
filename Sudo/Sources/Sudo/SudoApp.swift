@@ -25,14 +25,21 @@ struct SudoApp: App {
     }
 
     private func checkAccessibilityPermission() {
-        let trusted = AXIsProcessTrusted()
-        if !trusted {
-            print("[sudo] Accessibility permission not granted.")
-            print("[sudo] System Settings → Privacy & Security → Accessibility → Enable Sudo")
-            let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
-            AXIsProcessTrustedWithOptions(options)
-        } else {
+        if AXIsProcessTrusted() {
             print("[sudo] Accessibility permission granted")
+            return
         }
+
+        // Only show the system prompt once — after that, the user knows where to find it
+        let key = "hasShownAccessibilityPrompt"
+        if UserDefaults.standard.bool(forKey: key) {
+            print("[sudo] Accessibility not granted (prompt already shown before)")
+            return
+        }
+
+        print("[sudo] Accessibility permission not granted — showing prompt")
+        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
+        AXIsProcessTrustedWithOptions(options)
+        UserDefaults.standard.set(true, forKey: key)
     }
 }

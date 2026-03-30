@@ -33,7 +33,8 @@ final class AXButtonFinder {
     }
 
     private func searchTree(element: AXUIElement, searchTerms: [String], depth: Int) -> AXUIElement? {
-        guard depth < 15 else { return nil }
+        // Electron/webview AX trees can be 25+ levels deep
+        guard depth < 30 else { return nil }
 
         var role: AnyObject?
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
@@ -42,20 +43,29 @@ final class AXButtonFinder {
         let clickableRoles: Set<String> = [
             "AXButton", "AXLink", "AXMenuItem", "AXMenuButton",
             "AXStaticText", "AXGroup", "AXCell",
+            // Electron/webview roles
+            "AXRadioButton", "AXCheckBox", "AXPopUpButton",
+            "AXGenericElement", "AXListItem",
         ]
 
-        if clickableRoles.contains(roleStr) || hasClickAction(element) {
+        if clickableRoles.contains(roleStr) || hasAnyAction(element) {
             if let title = getElementText(element), matchesSearchTerms(title, terms: searchTerms) {
                 if isElementActionable(element) {
+                    return element
+                }
+                // For Electron apps: if element has position but no AXPress,
+                // still return it — executor will try click fallback
+                if hasPosition(element) {
                     return element
                 }
             }
         }
 
-        if roleStr == "AXGroup" || roleStr == "AXCell" {
-            let combinedText = getCombinedChildText(element, maxDepth: 2)
+        // Check groups with combined child text
+        if roleStr == "AXGroup" || roleStr == "AXCell" || roleStr == "AXGenericElement" || roleStr == "AXListItem" {
+            let combinedText = getCombinedChildText(element, maxDepth: 3)
             if let text = combinedText, matchesSearchTerms(text, terms: searchTerms) {
-                if hasClickAction(element) && isElementActionable(element) {
+                if hasPosition(element) {
                     return element
                 }
             }
@@ -78,6 +88,7 @@ final class AXButtonFinder {
             kAXTitleAttribute as String,
             kAXValueAttribute as String,
             kAXDescriptionAttribute as String,
+            "AXHelp",
         ]
         var parts: [String] = []
         for attr in attributes {
@@ -99,7 +110,7 @@ final class AXButtonFinder {
 
         var parts: [String] = []
         if let text = getElementText(element) { parts.append(text) }
-        for child in childArray.prefix(10) {
+        for child in childArray.prefix(15) {
             if let text = getCombinedChildText(child, maxDepth: maxDepth - 1) { parts.append(text) }
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
@@ -110,11 +121,16 @@ final class AXButtonFinder {
         return terms.contains { lower == $0 || lower.contains($0) }
     }
 
-    private func hasClickAction(_ element: AXUIElement) -> Bool {
+    private func hasAnyAction(_ element: AXUIElement) -> Bool {
         var actions: AnyObject?
         guard AXUIElementCopyAttributeValue(element, "AXActionNames" as CFString, &actions) == .success,
-              let actionArray = actions as? [String] else { return true }
-        return actionArray.contains("AXPress") || actionArray.contains("AXConfirm")
+              let actionArray = actions as? [String] else { return false }
+        return !actionArray.isEmpty
+    }
+
+    private func hasPosition(_ element: AXUIElement) -> Bool {
+        var position: AnyObject?
+        return AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &position) == .success
     }
 
     private func isElementActionable(_ element: AXUIElement) -> Bool {
@@ -122,7 +138,6 @@ final class AXButtonFinder {
         if AXUIElementCopyAttributeValue(element, kAXEnabledAttribute as CFString, &enabled) == .success,
            let isEnabled = enabled as? Bool, !isEnabled { return false }
 
-        var position: AnyObject?
-        return AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &position) == .success
+        return hasPosition(element)
     }
 }

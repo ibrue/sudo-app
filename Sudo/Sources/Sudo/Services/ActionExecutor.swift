@@ -22,11 +22,26 @@ final class ActionExecutor {
     }
 
     private func performAXPress(element: AXUIElement) -> ExecutionResult {
+        // Try standard AX actions first
         for action in ["AXPress", "AXConfirm", "AXShowDefaultUI"] {
             if AXUIElementPerformAction(element, action as CFString) == .success {
                 return .success(method: action)
             }
         }
+
+        // Fallback: click at the element's center position (for Electron/webview elements)
+        var positionValue: AnyObject?
+        var sizeValue: AnyObject?
+        if AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
+           AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success {
+            var position = CGPoint.zero
+            var size = CGSize.zero
+            AXValueGetValue(positionValue as! AXValue, .cgPoint, &position)
+            AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+            let center = CGPoint(x: position.x + size.width / 2, y: position.y + size.height / 2)
+            return performClickAtPoint(center)
+        }
+
         return .failure(reason: "All AX actions failed")
     }
 
