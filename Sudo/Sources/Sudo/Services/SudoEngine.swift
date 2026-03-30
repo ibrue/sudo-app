@@ -46,13 +46,6 @@ final class SudoEngine: ObservableObject {
         }
     }
 
-    /// Trigger an action programmatically (for the test panel UI)
-    func triggerAction(_ action: PadAction) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.handleAction(action)
-        }
-    }
-
     private func handleAction(_ action: PadAction) {
         lastAction = "Processing: \(action.displayName)..."
 
