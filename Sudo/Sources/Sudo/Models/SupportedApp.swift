@@ -9,8 +9,17 @@ enum SupportedApp: String, CaseIterable {
     // AI-enabled editors
     case cursor     = "com.todesktop.230313mzl4w4u92"
     case vscode     = "com.microsoft.VSCode"
+    case vscodeInsiders = "com.microsoft.VSCodeInsiders"
     case vscodium   = "com.vscodium"
     case windsurf   = "com.codeium.windsurf"
+
+    // Terminals running Claude Code
+    case terminal   = "com.apple.Terminal"
+    case iterm      = "com.googlecode.iterm2"
+    case warp       = "dev.warp.Warp-Stable"
+    case ghostty    = "com.mitchellh.ghostty"
+    case kitty      = "net.kovidgoyal.kitty"
+    case alacritty  = "org.alacritty"
 
     // Web-based AI apps
     case claudeWeb  = "claude.ai"
@@ -18,21 +27,23 @@ enum SupportedApp: String, CaseIterable {
     case grok       = "grok.com"
 
     static let nativeBundleIDs: Set<String> = [
-        // AI chat apps
         "com.anthropic.claudefordesktop",
         "com.openai.chat",
-        // AI-enabled editors
-        "com.todesktop.230313mzl4w4u92",  // Cursor
+    ]
+
+    /// Editors and terminals that may run AI agents (Claude Code, Cline, etc.)
+    static let editorBundleIDs: Set<String> = [
+        "com.todesktop.230313mzl4w4u92",
         "com.microsoft.VSCode",
+        "com.microsoft.VSCodeInsiders",
         "com.vscodium",
-        "com.codeium.windsurf",            // Windsurf
-        // Terminals running Claude Code
+        "com.codeium.windsurf",
         "com.apple.Terminal",
         "com.googlecode.iterm2",
         "dev.warp.Warp-Stable",
         "com.mitchellh.ghostty",
         "net.kovidgoyal.kitty",
-        "io.alacritty",
+        "org.alacritty",
     ]
 
     static let webDomains: [String] = [
@@ -57,10 +68,16 @@ enum SupportedApp: String, CaseIterable {
         case .claude, .claudeWeb:   return "Claude"
         case .chatgpt, .chatgptWeb: return "ChatGPT"
         case .grok:                 return "Grok"
+        case .vscode, .vscodeInsiders: return "VS Code"
         case .cursor:               return "Cursor"
-        case .vscode:               return "VS Code"
         case .vscodium:             return "VSCodium"
         case .windsurf:             return "Windsurf"
+        case .terminal:             return "Terminal"
+        case .iterm:                return "iTerm2"
+        case .warp:                 return "Warp"
+        case .ghostty:              return "Ghostty"
+        case .kitty:                return "Kitty"
+        case .alacritty:            return "Alacritty"
         }
     }
 }

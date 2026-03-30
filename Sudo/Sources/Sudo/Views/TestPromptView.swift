@@ -44,9 +44,8 @@ struct TestPromptView: View {
 
             Rectangle().fill(Color(hex: 0x1E1E1E)).frame(height: 1)
 
-            // Permission buttons — these are what sudo detects
+            // Permission buttons
             HStack(spacing: 12) {
-                // The "Allow" button — sudo's approve action searches for this
                 Button("Allow") {
                     log.append("[\(timestamp())] Allow clicked (manually)")
                     promptCount += 1
@@ -54,7 +53,6 @@ struct TestPromptView: View {
                 .buttonStyle(TestButtonStyle(color: Color(hex: 0x00FF41)))
                 .accessibilityLabel("Allow")
 
-                // The "Allow Once" variant
                 Button("Allow Once") {
                     log.append("[\(timestamp())] Allow Once clicked (manually)")
                     promptCount += 1
@@ -62,7 +60,6 @@ struct TestPromptView: View {
                 .buttonStyle(TestButtonStyle(color: Color(hex: 0x00FF41)))
                 .accessibilityLabel("Allow Once")
 
-                // The "Deny" button — sudo's reject action searches for this
                 Button("Deny") {
                     log.append("[\(timestamp())] Deny clicked (manually)")
                     promptCount += 1

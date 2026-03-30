@@ -14,6 +14,13 @@ final class SudoEngine: ObservableObject {
     private let executor = ActionExecutor()
     private let hotkeyListener = HotkeyListener()
 
+    /// Trigger an action programmatically (for the test panel UI)
+    func triggerAction(_ padAction: PadAction) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.handleAction(padAction)
+        }
+    }
+
     func start() {
         hotkeyListener.start { [weak self] action in
             self?.handleAction(action)

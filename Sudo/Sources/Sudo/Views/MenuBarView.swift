@@ -4,7 +4,6 @@ struct MenuBarView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
     @State private var showTestPanel = false
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -83,12 +82,12 @@ struct MenuBarView: View {
                         .padding(.bottom, 2)
 
                     HStack(spacing: 6) {
-                        ForEach(PadAction.allCases, id: \.rawValue) { action in
-                            Button(action: { engine.triggerAction(action) }) {
+                        ForEach(PadAction.allCases, id: \.rawValue) { padAction in
+                            Button(action: { engine.triggerAction(padAction) }) {
                                 VStack(spacing: 2) {
-                                    Text("F\(action.fKeyNumber)")
+                                    Text("F\(padAction.fKeyNumber)")
                                         .font(SudoTheme.mono(size: 10, weight: .bold))
-                                    Text(action.rawValue)
+                                    Text(padAction.rawValue)
                                         .font(SudoTheme.mono(size: 8))
                                 }
                                 .foregroundColor(SudoTheme.accent)
@@ -103,7 +102,7 @@ struct MenuBarView: View {
                         }
                     }
 
-                    Button(action: { openWindow(id: "test-prompt") }) {
+                    Button(action: { TestWindowManager.shared.open() }) {
                         Text("[ OPEN TEST WINDOW ]")
                             .font(SudoTheme.mono(size: 10))
                             .foregroundColor(SudoTheme.accent)

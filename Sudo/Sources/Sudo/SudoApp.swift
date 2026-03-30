@@ -5,11 +5,14 @@ import Cocoa
 struct SudoApp: App {
     @StateObject private var engine = SudoEngine()
     @StateObject private var updater = OTAUpdater()
+    @State private var hasLaunched = false
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarView(engine: engine, updater: updater)
                 .onAppear {
+                    guard !hasLaunched else { return }
+                    hasLaunched = true
                     engine.start()
                     updater.startPeriodicChecks()
                     checkAccessibilityPermission()
@@ -19,13 +22,6 @@ struct SudoApp: App {
                 .font(SudoTheme.mono(size: 9, weight: .medium))
         }
         .menuBarExtraStyle(.window)
-
-        // Test window — a fake AI prompt with Allow/Deny buttons
-        Window("sudo test prompt", id: "test-prompt") {
-            TestPromptView()
-        }
-        .defaultSize(width: 480, height: 320)
-        .windowStyle(.hiddenTitleBar)
     }
 
     private func checkAccessibilityPermission() {
