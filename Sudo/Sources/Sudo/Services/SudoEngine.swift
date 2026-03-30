@@ -8,7 +8,11 @@ final class SudoEngine: ObservableObject {
     @Published var detectedApp: String = "No AI app detected"
     @Published var isConnected: Bool = false
     @Published var isProcessing: Bool = false
-    @Published var searchAllApps: Bool = false
+
+    var searchAllApps: Bool {
+        get { SudoSettings.shared.searchAllApps }
+        set { SudoSettings.shared.searchAllApps = newValue; objectWillChange.send() }
+    }
 
     private let appDetector = AppDetector()
     private let axFinder = AXButtonFinder()

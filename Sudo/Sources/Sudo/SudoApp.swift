@@ -10,11 +10,13 @@ struct SudoApp: App {
 
     private let dotTimer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
 
+    /// Fixed 4-char content between brackets: "sudo" or animated dots
     private var menuBarLabel: String {
         if engine.isProcessing {
-            let dots = String(repeating: ".", count: (dotFrame % 4) + 1)
-            let pad = String(repeating: " ", count: 4 - dots.count)
-            return "[\(dots)\(pad)]"
+            let frame = dotFrame % 4
+            // Use middle dot (·) and underscore for consistent monospace width
+            let patterns = ["·___", "··__", "···_", "····"]
+            return "[\(patterns[frame])]"
         }
         return "[sudo]"
     }
@@ -27,7 +29,6 @@ struct SudoApp: App {
                     hasLaunched = true
                     engine.start()
                     updater.startPeriodicChecks()
-                    checkAccessibilityPermission()
                 }
         } label: {
             Text(menuBarLabel)
@@ -39,23 +40,5 @@ struct SudoApp: App {
                 }
         }
         .menuBarExtraStyle(.window)
-    }
-
-    private func checkAccessibilityPermission() {
-        if AXIsProcessTrusted() {
-            print("[sudo] Accessibility permission granted")
-            return
-        }
-
-        let key = "hasShownAccessibilityPrompt"
-        if UserDefaults.standard.bool(forKey: key) {
-            print("[sudo] Accessibility not granted (prompt already shown before)")
-            return
-        }
-
-        print("[sudo] Accessibility permission not granted — showing prompt")
-        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
-        UserDefaults.standard.set(true, forKey: key)
     }
 }

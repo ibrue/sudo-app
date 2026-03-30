@@ -27,6 +27,10 @@ enum PadAction: String, CaseIterable {
     }
 
     var displayName: String {
+        SudoSettings.shared.displayName(for: self)
+    }
+
+    var defaultDisplayName: String {
         switch self {
         case .approve: return "Approve / Yes"
         case .reject:  return "Reject / No"
@@ -36,6 +40,10 @@ enum PadAction: String, CaseIterable {
     }
 
     var searchTerms: [String] {
+        SudoSettings.shared.searchTerms(for: self)
+    }
+
+    var defaultSearchTerms: [String] {
         switch self {
         case .approve:
             return [
@@ -57,13 +65,12 @@ enum PadAction: String, CaseIterable {
     }
 
     /// Keyboard fallback for Claude Code style prompts in editors/terminals.
-    /// Returns the virtual key code to press (number keys for option selection).
     var editorKeyCode: UInt16? {
         switch self {
-        case .approve: return 18  // "1" key — selects "Yes" in Claude Code
-        case .reject:  return 20  // "3" key — selects "No" in Claude Code
-        case .action3: return 19  // "2" key — selects "Yes, allow all" or middle option
-        case .action4: return 53  // Escape key — cancel/dismiss
+        case .approve: return 18  // "1" key
+        case .reject:  return 20  // "3" key
+        case .action3: return 19  // "2" key
+        case .action4: return 53  // Escape key
         }
     }
 }

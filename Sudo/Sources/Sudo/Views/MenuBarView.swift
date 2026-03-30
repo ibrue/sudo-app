@@ -3,7 +3,12 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
+    @ObservedObject var settings = SudoSettings.shared
     @State private var showTestPanel = false
+    @State private var showRemapPanel = false
+    @State private var editingAction: PadAction? = nil
+    @State private var editName = ""
+    @State private var editTerms = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -38,20 +43,33 @@ struct MenuBarView: View {
 
             // Button map
             VStack(alignment: .leading, spacing: SudoTheme.spacingXs) {
-                Text("> button map")
-                    .font(SudoTheme.mono(size: 10))
-                    .foregroundColor(SudoTheme.textMuted)
-                    .padding(.bottom, 2)
-
-                ForEach(PadAction.allCases, id: \.rawValue) { action in
-                    HStack {
-                        Text("F\(action.fKeyNumber)")
-                            .font(SudoTheme.mono(size: 11))
+                HStack {
+                    Text("> button map")
+                        .font(SudoTheme.mono(size: 10))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Spacer()
+                    Button(action: { showRemapPanel.toggle() }) {
+                        Text(showRemapPanel ? "done" : "edit")
+                            .font(SudoTheme.mono(size: 9))
                             .foregroundColor(SudoTheme.accent)
-                            .frame(width: 30, alignment: .leading)
-                        Text(action.displayName)
-                            .font(SudoTheme.mono(size: 11))
-                            .foregroundColor(SudoTheme.text)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.bottom, 2)
+
+                if showRemapPanel {
+                    remapPanel
+                } else {
+                    ForEach(PadAction.allCases, id: \.rawValue) { action in
+                        HStack {
+                            Text("F\(action.fKeyNumber)")
+                                .font(SudoTheme.mono(size: 11))
+                                .foregroundColor(SudoTheme.accent)
+                                .frame(width: 30, alignment: .leading)
+                            Text(action.displayName)
+                                .font(SudoTheme.mono(size: 11))
+                                .foregroundColor(SudoTheme.text)
+                        }
                     }
                 }
             }
@@ -210,6 +228,98 @@ struct MenuBarView: View {
         .frame(width: 320)
         .background(SudoTheme.bg)
     }
+
+    // MARK: - Remap Panel
+
+    @ViewBuilder
+    private var remapPanel: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(PadAction.allCases, id: \.rawValue) { action in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("F\(action.fKeyNumber)")
+                            .font(SudoTheme.mono(size: 11))
+                            .foregroundColor(SudoTheme.accent)
+                            .frame(width: 30, alignment: .leading)
+
+                        if editingAction == action {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("name:")
+                                        .font(SudoTheme.mono(size: 9))
+                                        .foregroundColor(SudoTheme.textMuted)
+                                    TextField("", text: $editName)
+                                        .font(SudoTheme.mono(size: 10))
+                                        .textFieldStyle(.plain)
+                                        .foregroundColor(SudoTheme.text)
+                                }
+                                HStack {
+                                    Text("find:")
+                                        .font(SudoTheme.mono(size: 9))
+                                        .foregroundColor(SudoTheme.textMuted)
+                                    TextField("comma-separated terms", text: $editTerms)
+                                        .font(SudoTheme.mono(size: 10))
+                                        .textFieldStyle(.plain)
+                                        .foregroundColor(SudoTheme.text)
+                                }
+                                HStack(spacing: 8) {
+                                    Button("save") {
+                                        settings.buttonNames[action.rawValue] = editName.isEmpty ? nil : editName
+                                        let terms = editTerms.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                                        settings.buttonSearchTerms[action.rawValue] = terms.isEmpty ? nil : terms
+                                        editingAction = nil
+                                    }
+                                    .font(SudoTheme.mono(size: 9))
+                                    .foregroundColor(SudoTheme.accent)
+                                    .buttonStyle(.plain)
+
+                                    Button("reset") {
+                                        settings.buttonNames[action.rawValue] = nil
+                                        settings.buttonSearchTerms[action.rawValue] = nil
+                                        editingAction = nil
+                                    }
+                                    .font(SudoTheme.mono(size: 9))
+                                    .foregroundColor(SudoTheme.error)
+                                    .buttonStyle(.plain)
+
+                                    Button("cancel") {
+                                        editingAction = nil
+                                    }
+                                    .font(SudoTheme.mono(size: 9))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        } else {
+                            Text(action.displayName)
+                                .font(SudoTheme.mono(size: 11))
+                                .foregroundColor(SudoTheme.text)
+                            Spacer()
+                            Button("edit") {
+                                editName = settings.buttonNames[action.rawValue] ?? action.defaultDisplayName
+                                editTerms = (settings.buttonSearchTerms[action.rawValue] ?? action.defaultSearchTerms).joined(separator: ", ")
+                                editingAction = action
+                            }
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.accent)
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    if editingAction != action {
+                        let terms = settings.searchTerms(for: action).prefix(3).joined(separator: ", ")
+                        Text("searches: \(terms)...")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.surface)
+                            .padding(.leading, 30)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    // MARK: - Helpers
 
     private var divider: some View {
         Rectangle()
