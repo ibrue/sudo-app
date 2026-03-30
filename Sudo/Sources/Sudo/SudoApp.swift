@@ -13,11 +13,14 @@ import Cocoa
 struct SudoApp: App {
     @StateObject private var engine = SudoEngine()
     @StateObject private var updater = OTAUpdater()
+    @State private var hasLaunched = false
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarView(engine: engine, updater: updater)
                 .onAppear {
+                    guard !hasLaunched else { return }
+                    hasLaunched = true
                     engine.start()
                     updater.startPeriodicChecks()
                     checkAccessibilityPermission()
