@@ -11,6 +11,34 @@ final class AppDetector {
         let matchedDomain: String?
     }
 
+    /// Detect all running supported apps (for search-all-apps mode)
+    func detectAllSupportedApps() -> [DetectedApp] {
+        var results: [DetectedApp] = []
+        let runningApps = NSWorkspace.shared.runningApplications
+
+        for app in runningApps {
+            let bundleID = app.bundleIdentifier ?? ""
+            let appName = app.localizedName ?? ""
+            let pid = app.processIdentifier
+
+            if SupportedApp.nativeBundleIDs.contains(bundleID) ||
+               SupportedApp.editorBundleIDs.contains(bundleID) {
+                results.append(DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil))
+            }
+        }
+
+        // Put frontmost app first
+        if let front = NSWorkspace.shared.frontmostApplication {
+            let frontPid = front.processIdentifier
+            if let idx = results.firstIndex(where: { $0.pid == frontPid }), idx > 0 {
+                let app = results.remove(at: idx)
+                results.insert(app, at: 0)
+            }
+        }
+
+        return results
+    }
+
     func detectFrontmostApp() -> DetectedApp? {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
 

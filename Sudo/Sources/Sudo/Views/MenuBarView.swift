@@ -115,6 +115,20 @@ struct MenuBarView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 4)
+
+                    // Search all apps toggle
+                    Button(action: { engine.searchAllApps.toggle() }) {
+                        HStack {
+                            Text(engine.searchAllApps ? "[x]" : "[ ]")
+                                .font(SudoTheme.mono(size: 10))
+                                .foregroundColor(SudoTheme.accent)
+                            Text("search all apps (not just focused)")
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.textMuted)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)

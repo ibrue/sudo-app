@@ -55,4 +55,15 @@ enum PadAction: String, CaseIterable {
             return ["Stop", "Cancel", "Close", "Dismiss"]
         }
     }
+
+    /// Keyboard fallback for Claude Code style prompts in editors/terminals.
+    /// Returns the virtual key code to press (number keys for option selection).
+    var editorKeyCode: UInt16? {
+        switch self {
+        case .approve: return 18  // "1" key — selects "Yes" in Claude Code
+        case .reject:  return 20  // "3" key — selects "No" in Claude Code
+        case .action3: return 19  // "2" key — selects "Yes, allow all" or middle option
+        case .action4: return 53  // Escape key — cancel/dismiss
+        }
+    }
 }
