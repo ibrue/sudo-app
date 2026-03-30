@@ -6,13 +6,13 @@ Menu bar daemon for the [sudo macro pad](https://sudo.supply). Translates physic
 
 **Quick install (from source):**
 ```bash
-cd sudopad-app
+cd sudo-app
 ./install.sh
 ```
 
 **Or build manually:**
 ```bash
-cd sudopad-app
+cd sudo-app
 ./build.sh              # builds Sudo.app in dist/
 ./create-dmg.sh         # creates Sudo-1.0.0-macOS.dmg
 ```
@@ -22,9 +22,21 @@ cd sudopad-app
 ## How it works
 
 1. **Listen** — Intercepts `Ctrl+Shift+F13–F16` from the RP2040 macro pad
-2. **Detect** — Identifies frontmost AI app (Claude, ChatGPT, Grok) via bundle ID or browser tab
+2. **Detect** — Identifies frontmost AI app via bundle ID or browser tab
 3. **Find** — Locates approve/reject buttons via AX accessibility tree (primary) + Vision OCR (fallback)
 4. **Act** — Presses button via `AXUIElement.performAction` — no synthetic input, anti-cheat safe
+
+## Supported apps
+
+| Category | Apps |
+|----------|------|
+| Native AI | Claude for Desktop, ChatGPT |
+| Editors | VS Code, VS Code Insiders, Cursor, VSCodium, Windsurf |
+| Terminals | Terminal.app, iTerm2, Warp, Ghostty, Kitty, Alacritty |
+| Web (via browser) | claude.ai, chatgpt.com, grok.com |
+| Browsers | Safari, Chrome, Firefox, Brave, Edge, Arc, Opera |
+
+Editors and terminals are detected as AI apps when running agents like Claude Code, Cline, or GitHub Copilot.
 
 ## Button mapping
 
@@ -34,6 +46,13 @@ cd sudopad-app
 | 2 | `Ctrl+Shift+F14` | Reject / No |
 | 3 | `Ctrl+Shift+F15` | Action 3 |
 | 4 | `Ctrl+Shift+F16` | Action 4 |
+
+## Testing without hardware
+
+The app includes a built-in test panel (click `> test panel` in the menu bar popover):
+
+- **F13–F16 buttons** — simulate macro pad key presses
+- **Test window** — opens a fake AI permission prompt with Allow/Deny buttons for testing the accessibility tree detection
 
 ## Requirements
 
