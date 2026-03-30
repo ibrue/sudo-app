@@ -82,12 +82,12 @@ struct MenuBarView: View {
                         .padding(.bottom, 2)
 
                     HStack(spacing: 6) {
-                        ForEach(PadAction.allCases, id: \.rawValue) { action in
-                            Button(action: { engine.triggerAction(action) }) {
+                        ForEach(PadAction.allCases, id: \.rawValue) { padAction in
+                            Button(action: { engine.triggerAction(padAction) }) {
                                 VStack(spacing: 2) {
-                                    Text("F\(action.fKeyNumber)")
+                                    Text("F\(padAction.fKeyNumber)")
                                         .font(SudoTheme.mono(size: 10, weight: .bold))
-                                    Text(action.rawValue)
+                                    Text(padAction.rawValue)
                                         .font(SudoTheme.mono(size: 8))
                                 }
                                 .foregroundColor(SudoTheme.accent)
