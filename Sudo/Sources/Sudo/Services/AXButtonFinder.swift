@@ -4,7 +4,7 @@ import Cocoa
 /// Uses AXUIElement — the same API as VoiceOver. Anti-cheat compatible.
 final class AXButtonFinder {
 
-    func findButton(for action: PadAction, pid: pid_t) -> ActionResult {
+    func findButton(for action: PadAction, pid: pid_t, bundleID: String? = nil) -> ActionResult {
         let appElement = AXUIElementCreateApplication(pid)
 
         var windowsValue: AnyObject?
@@ -13,7 +13,7 @@ final class AXButtonFinder {
             return .notFound(reason: "Could not access app windows")
         }
 
-        let searchTerms = action.searchTerms.map { $0.lowercased() }
+        let searchTerms = action.searchTerms(forApp: bundleID).map { $0.lowercased() }
 
         var focusedWindow: AnyObject?
         AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
@@ -145,5 +145,55 @@ final class AXButtonFinder {
            let isEnabled = enabled as? Bool, !isEnabled { return false }
 
         return hasPosition(element)
+    }
+
+    // MARK: - Context capture
+
+    /// Walk the AX tree of the focused window and collect text near interactive elements.
+    /// Returns up to 200 characters of surrounding context, or nil if nothing found.
+    func captureContext(pid: pid_t) -> String? {
+        let appElement = AXUIElementCreateApplication(pid)
+
+        var focusedWindow: AnyObject?
+        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow) == .success,
+              let window = focusedWindow as! AXUIElement? else { return nil }
+
+        var collected: [String] = []
+        collectContextText(element: window, collected: &collected, depth: 0)
+
+        guard !collected.isEmpty else { return nil }
+        let joined = collected.joined(separator: " ")
+        let trimmed = joined.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        return String(trimmed.prefix(200))
+    }
+
+    private func collectContextText(element: AXUIElement, collected: inout [String], depth: Int) {
+        guard depth < 15 else { return }
+        // stop early if we already have enough
+        let currentLength = collected.reduce(0) { $0 + $1.count }
+        guard currentLength < 200 else { return }
+
+        var role: AnyObject?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+        let roleStr = role as? String ?? ""
+
+        let textRoles: Set<String> = ["AXStaticText", "AXTextField", "AXTextArea", "AXHeading"]
+        if textRoles.contains(roleStr) {
+            if let text = getElementText(element) {
+                let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !clean.isEmpty && clean.count <= 120 {
+                    collected.append(clean)
+                }
+            }
+        }
+
+        var children: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children) == .success,
+              let childArray = children as? [AXUIElement] else { return }
+
+        for child in childArray.prefix(20) {
+            collectContextText(element: child, collected: &collected, depth: depth + 1)
+        }
     }
 }

@@ -9,6 +9,21 @@ final class AppDetector {
         let pid: pid_t
         let isBrowser: Bool
         let matchedDomain: String?
+        let isPlugin: Bool
+
+        init(bundleID: String, name: String, pid: pid_t, isBrowser: Bool, matchedDomain: String?, isPlugin: Bool = false) {
+            self.bundleID = bundleID
+            self.name = name
+            self.pid = pid
+            self.isBrowser = isBrowser
+            self.matchedDomain = matchedDomain
+            self.isPlugin = isPlugin
+        }
+    }
+
+    /// Bundle IDs contributed by loaded plugins.
+    var pluginBundleIDs: Set<String> {
+        PluginManager.shared.pluginBundleIDs
     }
 
     /// Detect all running supported apps (for search-all-apps mode)
@@ -24,6 +39,8 @@ final class AppDetector {
             if SupportedApp.nativeBundleIDs.contains(bundleID) ||
                SupportedApp.editorBundleIDs.contains(bundleID) {
                 results.append(DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil))
+            } else if pluginBundleIDs.contains(bundleID) {
+                results.append(DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil, isPlugin: true))
             } else if SupportedApp.browserBundleIDs.contains(bundleID) {
                 if let domain = detectAIDomainInBrowser(pid: pid) {
                     results.append(DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: true, matchedDomain: domain))
@@ -56,6 +73,10 @@ final class AppDetector {
 
         if SupportedApp.editorBundleIDs.contains(bundleID) {
             return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil)
+        }
+
+        if pluginBundleIDs.contains(bundleID) {
+            return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil, isPlugin: true)
         }
 
         if SupportedApp.browserBundleIDs.contains(bundleID) {

@@ -16,6 +16,9 @@ struct MenuBarView: View {
     @State private var editingAction: PadAction? = nil
     @State private var editName = ""
     @State private var editTerms = ""
+    @State private var showAppProfiles = false
+    @State private var showMacros = false
+    @State private var editingMacroID: UUID? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -93,6 +96,12 @@ struct MenuBarView: View {
                     Text("> button map")
                         .font(SudoTheme.mono(size: 10))
                         .foregroundColor(SudoTheme.textMuted)
+                    if let bid = engine.currentBundleID, settings.appProfiles[bid] != nil {
+                        let appName = bid.split(separator: ".").last.map(String.init) ?? bid
+                        Text("(profile: \(appName))")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.accent)
+                    }
                     Spacer()
                     Button(action: { showRemapPanel.toggle() }) {
                         Text(showRemapPanel ? "done" : "edit")
@@ -231,6 +240,29 @@ struct MenuBarView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 4)
+                }
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 10)
+
+            // Macros
+            divider
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: { showMacros.toggle() }) {
+                    HStack {
+                        Text("> macros (\(settings.macros.count))")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                        Spacer()
+                        Text(showMacros ? "▾" : "▸")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showMacros {
+                    macrosPanel
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)

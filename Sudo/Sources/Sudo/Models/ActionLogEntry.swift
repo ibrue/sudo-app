@@ -8,6 +8,7 @@ struct ActionLogEntry: Identifiable {
     let app: String
     let method: String
     let succeeded: Bool
+    let context: String?
 
     var timeString: String {
         let f = DateFormatter()

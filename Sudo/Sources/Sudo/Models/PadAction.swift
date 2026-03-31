@@ -43,6 +43,14 @@ enum PadAction: String, CaseIterable {
         SudoSettings.shared.searchTerms(for: self)
     }
 
+    func displayName(forApp bundleID: String?) -> String {
+        SudoSettings.shared.displayName(for: self, bundleID: bundleID)
+    }
+
+    func searchTerms(forApp bundleID: String?) -> [String] {
+        SudoSettings.shared.searchTerms(for: self, bundleID: bundleID)
+    }
+
     var defaultSearchTerms: [String] {
         switch self {
         case .approve:

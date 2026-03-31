@@ -11,6 +11,7 @@ final class SudoEngine: ObservableObject {
     @Published var lastAction: String = "Waiting for input..."
     @Published var lastMethod: String = ""
     @Published var detectedApp: String = "No AI app detected"
+    @Published var currentBundleID: String? = nil
     @Published var isConnected: Bool = false
     @Published var isProcessing: Bool = false
     @Published var lastResult: ActionResult = .idle
@@ -63,13 +64,40 @@ final class SudoEngine: ObservableObject {
     private func updateDetectedApp() {
         if let app = appDetector.detectFrontmostApp() {
             let label = app.isBrowser ? "\(app.name) (\(app.matchedDomain ?? "web"))" : app.name
-            DispatchQueue.main.async { self.detectedApp = label }
+            DispatchQueue.main.async {
+                self.detectedApp = label
+                self.currentBundleID = app.bundleID
+            }
         } else {
-            DispatchQueue.main.async { self.detectedApp = "No AI app detected" }
+            // Also track non-AI apps for per-app profiles
+            let frontBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            DispatchQueue.main.async {
+                self.detectedApp = "No AI app detected"
+                self.currentBundleID = frontBundleID
+            }
+        }
+    }
+
+    /// Execute a macro sequence (chained actions with delays)
+    func executeMacro(_ macro: MacroSequence) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            for step in macro.steps {
+                guard let action = step.padAction else { continue }
+                self?.handleAction(action)
+                if step.delayAfter > 0 {
+                    Thread.sleep(forTimeInterval: step.delayAfter)
+                }
+            }
         }
     }
 
     private func handleAction(_ action: PadAction) {
+        // Check if this button has a macro assigned
+        if let macro = SudoSettings.shared.macros.first(where: { $0.assignedButton == action.rawValue }) {
+            executeMacro(macro)
+            return
+        }
+
         // Debounce: ignore rapid double-presses
         let now = Date()
         guard now.timeIntervalSince(lastActionTime) >= debounceDuration else {
@@ -98,12 +126,14 @@ final class SudoEngine: ObservableObject {
             return
         }
 
+        let activeBundleID = self.currentBundleID
+
         for app in appsToSearch {
             print("[sudo] Target: \(app.name) (PID \(app.pid)), action: \(action.displayName)")
 
             // Strategy 1: AX tree with timeout
             if let axResult = withTimeout(seconds: searchTimeout, work: {
-                self.axFinder.findButton(for: action, pid: app.pid)
+                self.axFinder.findButton(for: action, pid: app.pid, bundleID: activeBundleID)
             }), axResult.succeeded {
                 let execResult = executor.execute(result: axResult)
                 handleExecResult(execResult, action: action, app: app.name, method: "AX Tree")

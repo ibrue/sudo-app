@@ -62,6 +62,62 @@ final class SudoSettings: ObservableObject {
         }
     }
 
+    /// Macro sequences (chained actions)
+    @Published var macros: [MacroSequence] {
+        didSet {
+            if let data = try? JSONEncoder().encode(macros) {
+                defaults.set(data, forKey: "macros")
+            }
+        }
+    }
+
+    // MARK: - Usage Stats / Gamification
+
+    @Published var totalApproves: Int {
+        didSet { defaults.set(totalApproves, forKey: "totalApproves") }
+    }
+
+    @Published var totalRejects: Int {
+        didSet { defaults.set(totalRejects, forKey: "totalRejects") }
+    }
+
+    @Published var currentStreak: Int {
+        didSet { defaults.set(currentStreak, forKey: "currentStreak") }
+    }
+
+    @Published var lastActiveDate: String {
+        didSet { defaults.set(lastActiveDate, forKey: "lastActiveDate") }
+    }
+
+    /// Per-app profiles keyed by bundle ID.
+    /// Structure: [bundleID: [actionRawValue: ["name": String, "searchTerms": [String]]]]
+    @Published var appProfiles: [String: [String: [String: Any]]] {
+        didSet { persistAppProfiles() }
+    }
+
+    private func persistAppProfiles() {
+        // Convert to a Codable-friendly structure for JSON serialization
+        var codable: [String: [String: [String: Any]]] = [:]
+        for (bundleID, actions) in appProfiles {
+            var actionMap: [String: [String: Any]] = [:]
+            for (actionKey, config) in actions {
+                actionMap[actionKey] = config
+            }
+            codable[bundleID] = actionMap
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: codable) {
+            defaults.set(data, forKey: "appProfiles")
+        }
+    }
+
+    private static func loadAppProfiles(from defaults: UserDefaults) -> [String: [String: [String: Any]]] {
+        guard let data = defaults.data(forKey: "appProfiles"),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: [String: [String: Any]]] else {
+            return [:]
+        }
+        return json
+    }
+
     init() {
         self.searchAllApps = defaults.bool(forKey: "searchAllApps")
         self.soundEnabled = defaults.object(forKey: "soundEnabled") == nil ? true : defaults.bool(forKey: "soundEnabled")
@@ -79,6 +135,31 @@ final class SudoSettings: ObservableObject {
         } else {
             self.buttonSearchTerms = [:]
         }
+        self.appProfiles = Self.loadAppProfiles(from: defaults)
+        self.totalApproves = defaults.integer(forKey: "totalApproves")
+        self.totalRejects = defaults.integer(forKey: "totalRejects")
+        self.currentStreak = defaults.integer(forKey: "currentStreak")
+        self.lastActiveDate = defaults.string(forKey: "lastActiveDate") ?? ""
+        if let macroData = defaults.data(forKey: "macros"),
+           let saved = try? JSONDecoder().decode([MacroSequence].self, from: macroData) {
+            self.macros = saved
+        } else {
+            self.macros = Self.defaultMacros()
+        }
+    }
+
+    static func defaultMacros() -> [MacroSequence] {
+        [
+            MacroSequence(name: "double approve", steps: [
+                MacroStep(action: .approve, delayAfter: 1.5),
+                MacroStep(action: .approve, delayAfter: 0),
+            ]),
+            MacroSequence(name: "approve all", steps: [
+                MacroStep(action: .approve, delayAfter: 1.0),
+                MacroStep(action: .approve, delayAfter: 1.0),
+                MacroStep(action: .approve, delayAfter: 0),
+            ]),
+        ]
     }
 
     func displayName(for action: PadAction) -> String {
@@ -87,6 +168,86 @@ final class SudoSettings: ObservableObject {
 
     func searchTerms(for action: PadAction) -> [String] {
         buttonSearchTerms[action.rawValue] ?? action.defaultSearchTerms
+    }
+
+    // MARK: - Per-App Profiles
+
+    /// Get profile for a specific app (nil = use global defaults)
+    func profile(forBundleID bundleID: String) -> [String: ButtonPreset.ButtonConfig]? {
+        guard let actionMap = appProfiles[bundleID] else { return nil }
+        var result: [String: ButtonPreset.ButtonConfig] = [:]
+        for (actionKey, config) in actionMap {
+            let name = config["name"] as? String ?? ""
+            let terms = config["searchTerms"] as? [String] ?? []
+            result[actionKey] = ButtonPreset.ButtonConfig(displayName: name, searchTerms: terms)
+        }
+        return result.isEmpty ? nil : result
+    }
+
+    /// Save a profile for an app
+    func saveProfile(forBundleID bundleID: String, preset: ButtonPreset) {
+        var actionMap: [String: [String: Any]] = [:]
+        for (action, config) in preset.buttons {
+            actionMap[action.rawValue] = [
+                "name": config.displayName,
+                "searchTerms": config.searchTerms,
+            ]
+        }
+        appProfiles[bundleID] = actionMap
+    }
+
+    /// Delete a profile for an app
+    func deleteProfile(forBundleID bundleID: String) {
+        appProfiles.removeValue(forKey: bundleID)
+    }
+
+    /// Get the display name for an action, considering the current frontmost app
+    func displayName(for action: PadAction, bundleID: String?) -> String {
+        if let bundleID = bundleID,
+           let profile = appProfiles[bundleID],
+           let config = profile[action.rawValue],
+           let name = config["name"] as? String {
+            return name
+        }
+        return displayName(for: action)
+    }
+
+    /// Get search terms for an action, considering the current frontmost app
+    func searchTerms(for action: PadAction, bundleID: String?) -> [String] {
+        if let bundleID = bundleID,
+           let profile = appProfiles[bundleID],
+           let config = profile[action.rawValue],
+           let terms = config["searchTerms"] as? [String] {
+            return terms
+        }
+        return searchTerms(for: action)
+    }
+
+    /// Update the usage streak based on today's date.
+    func updateStreak() {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+
+        if lastActiveDate == today {
+            // Already counted today
+            return
+        }
+
+        if let lastDate = formatter.date(from: lastActiveDate) {
+            let calendar = Calendar.current
+            let daysBetween = calendar.dateComponents([.day], from: lastDate, to: Date()).day ?? 0
+            if daysBetween == 1 {
+                currentStreak += 1
+            } else if daysBetween > 1 {
+                currentStreak = 1
+            }
+        } else {
+            // First ever action
+            currentStreak = 1
+        }
+
+        lastActiveDate = today
     }
 
     static func generateAPIKey() -> String {
