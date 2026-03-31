@@ -1,7 +1,8 @@
 import Cocoa
 import Carbon
 
-/// Listens for global Ctrl+Shift+F13–F16 hotkey events from the macro pad.
+/// Listens for global hotkey events from any macro pad or keyboard.
+/// Key bindings are configurable — works with any firmware, not just sudo's default.
 /// Uses CGEvent tap — the standard macOS approach for global hotkeys.
 final class HotkeyListener {
     typealias ActionHandler = (PadAction) -> Void
@@ -12,14 +13,6 @@ final class HotkeyListener {
 
     /// Whether the event tap was created successfully
     var isListening: Bool { eventTap != nil }
-
-    private static let keyMap: [UInt16: PadAction] = {
-        var map = [UInt16: PadAction]()
-        for action in PadAction.allCases {
-            map[action.keyCode] = action
-        }
-        return map
-    }()
 
     func start(handler: @escaping ActionHandler) {
         self.handler = handler
@@ -49,7 +42,7 @@ final class HotkeyListener {
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
 
-        print("[sudo] Hotkey listener active — waiting for macro pad input")
+        print("[sudo] Hotkey listener active — waiting for input")
     }
 
     func stop() {
@@ -68,18 +61,41 @@ final class HotkeyListener {
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
 
-        guard flags.contains(.maskControl),
-              flags.contains(.maskShift),
-              let action = Self.keyMap[keyCode] else {
-            return Unmanaged.passUnretained(event)
+        // Check against configurable hotkey bindings
+        let bindings = SudoSettings.shared.hotkeyBindings
+
+        for action in PadAction.allCases {
+            guard let binding = bindings[action.rawValue] else { continue }
+            let bindingKeyCode = UInt16(binding["keyCode"] ?? 0)
+            let requiredMods = binding["modifiers"] ?? 0
+
+            if keyCode == bindingKeyCode && matchesModifiers(flags, required: requiredMods) {
+                print("[sudo] Received: \(action.displayName) (button \(action.buttonNumber), keyCode \(keyCode))")
+
+                DispatchQueue.main.async { [weak self] in
+                    self?.handler?(action)
+                }
+
+                return nil  // consume the event
+            }
         }
 
-        print("[sudo] Received: \(action.displayName) (F\(action.fKeyNumber))")
+        return Unmanaged.passUnretained(event)
+    }
 
-        DispatchQueue.main.async { [weak self] in
-            self?.handler?(action)
-        }
+    /// Check if the event flags match the required modifier mask
+    private func matchesModifiers(_ flags: CGEventFlags, required: Int) -> Bool {
+        let reqFlags = CGEventFlags(rawValue: UInt64(required))
 
-        return nil
+        // Check each required modifier is present
+        if reqFlags.contains(.maskControl) && !flags.contains(.maskControl) { return false }
+        if reqFlags.contains(.maskShift) && !flags.contains(.maskShift) { return false }
+        if reqFlags.contains(.maskCommand) && !flags.contains(.maskCommand) { return false }
+        if reqFlags.contains(.maskAlternate) && !flags.contains(.maskAlternate) { return false }
+
+        // If no modifiers required, accept any
+        if required == 0 { return true }
+
+        return true
     }
 }

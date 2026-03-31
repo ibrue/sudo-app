@@ -684,7 +684,67 @@ struct MenuBarView: View {
             settingToggle("notify on failure", isOn: $settings.notifyOnFailure)
             settingToggle("launch at login", isOn: $settings.launchAtLogin)
             settingToggle("anonymous telemetry", isOn: $settings.telemetryEnabled)
+
+            divider
+
+            // Hotkey bindings
+            Text("hotkey bindings:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+            Text("works with any macro pad or keyboard")
+                .font(SudoTheme.mono(size: 7))
+                .foregroundColor(SudoTheme.surface)
+
+            ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
+                let binding = settings.hotkeyBindings[action.rawValue]
+                let keyCode = binding?["keyCode"] ?? 0
+                let mods = binding?["modifiers"] ?? 0
+                HStack {
+                    Text("\(action.buttonNumber)")
+                        .font(SudoTheme.mono(size: 9, weight: .bold))
+                        .foregroundColor(Color(hex: action.buttonColorHex))
+                        .frame(width: 12)
+                    Text(describeHotkey(keyCode: keyCode, modifiers: mods))
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.text)
+                    Spacer()
+                    Text("keyCode: \(keyCode)")
+                        .font(SudoTheme.mono(size: 7))
+                        .foregroundColor(SudoTheme.surface)
+                }
+            }
+
+            Button("reset to defaults (ctrl+shift+F13-F16)") {
+                settings.resetHotkeyBindings()
+            }
+            .font(SudoTheme.mono(size: 8))
+            .foregroundColor(SudoTheme.textMuted)
+            .buttonStyle(.plain)
         }
+    }
+
+    private func describeHotkey(keyCode: Int, modifiers: Int) -> String {
+        var parts: [String] = []
+        let flags = CGEventFlags(rawValue: UInt64(modifiers))
+        if flags.contains(.maskControl) { parts.append("ctrl") }
+        if flags.contains(.maskShift) { parts.append("shift") }
+        if flags.contains(.maskCommand) { parts.append("cmd") }
+        if flags.contains(.maskAlternate) { parts.append("opt") }
+
+        let keyName: String
+        switch UInt16(keyCode) {
+        case 105: keyName = "F13"
+        case 107: keyName = "F14"
+        case 113: keyName = "F15"
+        case 106: keyName = "F16"
+        case 122: keyName = "F1"
+        case 120: keyName = "F2"
+        case 99:  keyName = "F3"
+        case 118: keyName = "F4"
+        default:  keyName = "key\(keyCode)"
+        }
+        parts.append(keyName)
+        return parts.joined(separator: "+")
     }
 
     private func settingToggle(_ label: String, isOn: Binding<Bool>) -> some View {

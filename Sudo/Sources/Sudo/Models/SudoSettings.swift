@@ -58,6 +58,12 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(buttonKeyCombos, forKey: "buttonKeyCombos") }
     }
 
+    /// Hotkey bindings — which key combo triggers each button.
+    /// Default: Ctrl+Shift+F13-F16. Configurable for any firmware/macro pad.
+    @Published var hotkeyBindings: [String: [String: Int]] {
+        didSet { defaults.set(hotkeyBindings, forKey: "hotkeyBindings") }
+    }
+
     /// Custom display names for each button (nil = use default)
     @Published var buttonNames: [String: String] {
         didSet { defaults.set(buttonNames, forKey: "buttonNames") }
@@ -154,6 +160,7 @@ final class SudoSettings: ObservableObject {
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
         self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]
+        self.hotkeyBindings = (defaults.dictionary(forKey: "hotkeyBindings") as? [String: [String: Int]]) ?? Self.defaultHotkeyBindings
         self.buttonNames = (defaults.dictionary(forKey: "buttonNames") as? [String: String]) ?? [:]
         if let data = defaults.data(forKey: "buttonSearchTerms"),
            let terms = try? JSONDecoder().decode([String: [String]].self, from: data) {
@@ -312,6 +319,21 @@ final class SudoSettings: ObservableObject {
         }
 
         lastActiveDate = today
+    }
+
+    /// Default hotkey bindings: Ctrl+Shift+F13-F16
+    static let defaultHotkeyBindings: [String: [String: Int]] = {
+        let ctrlShift = Int(CGEventFlags.maskControl.rawValue | CGEventFlags.maskShift.rawValue)
+        return [
+            "approve": ["keyCode": 105, "modifiers": ctrlShift],  // F13
+            "reject":  ["keyCode": 107, "modifiers": ctrlShift],  // F14
+            "action3": ["keyCode": 113, "modifiers": ctrlShift],  // F15
+            "action4": ["keyCode": 106, "modifiers": ctrlShift],  // F16
+        ]
+    }()
+
+    func resetHotkeyBindings() {
+        hotkeyBindings = Self.defaultHotkeyBindings
     }
 
     static func generateAPIKey() -> String {
