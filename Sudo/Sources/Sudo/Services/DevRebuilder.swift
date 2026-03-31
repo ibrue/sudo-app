@@ -68,7 +68,7 @@ final class DevRebuilder: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async { [self] in
             let steps: [(String, String)] = [
-                ("pulling...", "git pull origin main"),
+                ("pulling...", "git fetch origin main && git reset --hard origin/main"),
                 ("building...", "cd \(repoPath) && rm -rf Sudo/.build && ./build.sh"),
                 ("installing...", "rm -rf /Applications/Sudo.app && cp -r \(repoPath)/dist/Sudo.app /Applications/Sudo.app"),
             ]
