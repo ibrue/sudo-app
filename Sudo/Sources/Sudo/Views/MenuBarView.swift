@@ -184,7 +184,7 @@ struct MenuBarView: View {
                 if showRemapPanel {
                     remapPanel
                 } else {
-                    ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
+                    ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
                         HStack(spacing: 0) {
                             // Color stripe matching physical button
                             Rectangle()
@@ -701,7 +701,7 @@ struct MenuBarView: View {
                 .font(SudoTheme.mono(size: 7))
                 .foregroundColor(SudoTheme.surface)
 
-            ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
+            ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
                 let binding = settings.hotkeyBindings[action.rawValue]
                 let keyCode = binding?["keyCode"] ?? 0
                 let mods = binding?["modifiers"] ?? 0
