@@ -184,15 +184,19 @@ struct MenuBarView: View {
                 if showRemapPanel {
                     remapPanel
                 } else {
-                    ForEach(PadAction.allCases, id: \.rawValue) { action in
+                    ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
                         HStack {
-                            Text("F\(action.fKeyNumber)")
-                                .font(SudoTheme.mono(size: 11))
-                                .foregroundColor(SudoTheme.accent)
-                                .frame(width: 30, alignment: .leading)
+                            Text("\(action.buttonNumber)")
+                                .font(SudoTheme.mono(size: 11, weight: .bold))
+                                .foregroundColor(Color(hex: action.buttonColorHex))
+                                .frame(width: 16, alignment: .leading)
                             Text(action.displayName)
                                 .font(SudoTheme.mono(size: 11))
                                 .foregroundColor(SudoTheme.text)
+                            Spacer()
+                            Text("F\(action.fKeyNumber)")
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.surface)
                         }
                     }
                 }
@@ -1107,9 +1111,9 @@ struct MenuBarView: View {
                         for i in settings.macros.indices { if settings.macros[i].assignedButton == action.rawValue { settings.macros[i].assignedButton = nil } }
                         settings.macros[index].assignedButton = isAssigned ? nil : action.rawValue
                     }) {
-                        Text("F\(action.fKeyNumber)")
+                        Text("\(action.buttonNumber)")
                             .font(SudoTheme.mono(size: 8, weight: isAssigned ? .bold : .regular))
-                            .foregroundColor(isAssigned ? SudoTheme.bg : SudoTheme.accent)
+                            .foregroundColor(isAssigned ? SudoTheme.bg : Color(hex: action.buttonColorHex))
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(isAssigned ? SudoTheme.accent : Color.clear)
                             .overlay(Rectangle().stroke(SudoTheme.accent, lineWidth: 1))
@@ -1202,10 +1206,10 @@ struct MenuBarView: View {
                         }
                     }) {
                         HStack {
-                            Text("F\(action.fKeyNumber)")
-                                .font(SudoTheme.mono(size: 9, weight: .bold))
+                            Text("\(action.buttonNumber)")
+                                .font(SudoTheme.mono(size: 11, weight: .bold))
                                 .foregroundColor(.white)
-                                .frame(width: 24)
+                                .frame(width: 16)
                             Text(action.displayName.lowercased())
                                 .font(SudoTheme.mono(size: 9))
                                 .foregroundColor(.white)

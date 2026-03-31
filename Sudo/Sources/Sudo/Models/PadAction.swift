@@ -26,6 +26,16 @@ enum PadAction: String, CaseIterable {
         }
     }
 
+    /// Physical button number (1 = bottom/green, 4 = top/black)
+    var buttonNumber: Int {
+        switch self {
+        case .approve: return 1  // bottom (green)
+        case .action3: return 2  // second from bottom (yellow)
+        case .reject:  return 3  // second from top (red)
+        case .action4: return 4  // top (black)
+        }
+    }
+
     var displayName: String {
         SudoSettings.shared.displayName(for: self)
     }
