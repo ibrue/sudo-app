@@ -16,9 +16,9 @@ struct SudoApp: App {
     private var menuBarLabel: String {
         switch engine.lastResult {
         case .success:
-            return "[ OK ]"
+            return "[ ok ]"
         case .failure:
-            return "[FAIL]"
+            return "[fail]"
         case .processing:
             let frame = dotFrame % 4
             let patterns = ["·___", "··__", "···_", "····"]
