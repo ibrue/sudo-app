@@ -279,34 +279,59 @@ struct MenuBarView: View {
                 .buttonStyle(.plain)
 
                 if showTestPanel {
-                    HStack(spacing: 4) {
-                        ForEach(PadAction.physicalOrder, id: \.rawValue) { padAction in
-                            Button(action: { engine.triggerAction(padAction) }) {
-                                VStack(spacing: 2) {
-                                    Text("\(padAction.buttonNumber)")
-                                        .font(SudoTheme.mono(size: 10, weight: .bold))
-                                    Text(padAction.rawValue)
-                                        .font(SudoTheme.mono(size: 7))
-                                }
-                                .foregroundColor(SudoTheme.text)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                                .background(Color(hex: padAction.buttonColorHex).opacity(0.15))
-                                .overlay(
-                                    Rectangle()
-                                        .stroke(Color(hex: padAction.buttonColorHex).opacity(0.4), lineWidth: SudoTheme.borderWidth)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    Button(action: { TestWindowManager.shared.open() }) {
-                        Text("[ OPEN TEST WINDOW ]")
-                            .font(SudoTheme.mono(size: 10))
+                    // Device replica — vertical, matches physical layout
+                    VStack(spacing: 0) {
+                        // Screen
+                        Text("[sudo]")
+                            .font(SudoTheme.mono(size: 8, weight: .bold))
                             .foregroundColor(SudoTheme.accent)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 4)
+                            .background(SudoTheme.bg)
+
+                        Rectangle().fill(SudoTheme.border).frame(height: 1)
+
+                        // Buttons: top (4/black) to bottom (1/green)
+                        ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { padAction in
+                            Button(action: { engine.triggerAction(padAction) }) {
+                                HStack(spacing: 0) {
+                                    Rectangle()
+                                        .fill(Color(hex: padAction.buttonColorHex))
+                                        .frame(width: 3)
+                                    HStack {
+                                        Text("\(padAction.buttonNumber)")
+                                            .font(SudoTheme.mono(size: 9))
+                                            .foregroundColor(SudoTheme.textMuted)
+                                            .frame(width: 12, alignment: .leading)
+                                        Text(padAction.displayName.lowercased())
+                                            .font(SudoTheme.mono(size: 9))
+                                            .foregroundColor(SudoTheme.text)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text("press")
+                                            .font(SudoTheme.mono(size: 7))
+                                            .foregroundColor(SudoTheme.surface)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 6)
+                                }
+                                .background(SudoTheme.bg)
+                            }
+                            .buttonStyle(.plain)
+
+                            if padAction != PadAction.physicalOrder.first {
+                                Rectangle().fill(SudoTheme.border).frame(height: 1)
+                            }
+                        }
+                    }
+                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+
+                    Button(action: { TestWindowManager.shared.open() }) {
+                        Text("[ open test window ]")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.accent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
                             .overlay(
                                 Rectangle()
                                     .stroke(SudoTheme.border, lineWidth: SudoTheme.borderWidth)
