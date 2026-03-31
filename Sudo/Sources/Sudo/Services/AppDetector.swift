@@ -24,6 +24,10 @@ final class AppDetector {
             if SupportedApp.nativeBundleIDs.contains(bundleID) ||
                SupportedApp.editorBundleIDs.contains(bundleID) {
                 results.append(DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil))
+            } else if SupportedApp.browserBundleIDs.contains(bundleID) {
+                if let domain = detectAIDomainInBrowser(pid: pid) {
+                    results.append(DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: true, matchedDomain: domain))
+                }
             }
         }
 

@@ -116,9 +116,15 @@ final class AXButtonFinder {
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
+    /// Two-pass matching: exact match first, then substring.
+    /// Skips long text (>60 chars) to avoid false positives on paragraphs.
     private func matchesSearchTerms(_ text: String, terms: [String]) -> Bool {
         let lower = text.lowercased().trimmingCharacters(in: .whitespaces)
-        return terms.contains { lower == $0 || lower.contains($0) }
+        guard lower.count <= 60 else { return false }
+        // Pass 1: exact match
+        if terms.contains(where: { lower == $0 }) { return true }
+        // Pass 2: substring
+        return terms.contains { lower.contains($0) }
     }
 
     private func hasAnyAction(_ element: AXUIElement) -> Bool {

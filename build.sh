@@ -4,7 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="Sudo"
 BUNDLE_ID="supply.sudo.app"
-VERSION="1.0.0"
+# Read version from Swift source of truth
+VERSION=$(grep 'static let currentVersion' "$SCRIPT_DIR/Sudo/Sources/Sudo/Services/OTAUpdater.swift" | sed 's/.*"\(.*\)".*/\1/')
+if [ -z "$VERSION" ]; then VERSION="1.0.0"; fi
 
 echo "[sudo] Building $APP_NAME v$VERSION..."
 cd "$SCRIPT_DIR/Sudo"

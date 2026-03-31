@@ -282,10 +282,13 @@ final class OTAUpdater: ObservableObject {
         NSApp.terminate(nil)
     }
 
-    /// Semantic version comparison
+    /// Semantic version comparison (handles pre-release suffixes like "1.0.1-beta")
     private func isNewer(remote: String, current: String) -> Bool {
-        let remoteParts = remote.split(separator: ".").compactMap { Int($0) }
-        let currentParts = current.split(separator: ".").compactMap { Int($0) }
+        let (remoteNum, remotePre) = splitVersion(remote)
+        let (currentNum, currentPre) = splitVersion(current)
+
+        let remoteParts = remoteNum.split(separator: ".").compactMap { Int($0) }
+        let currentParts = currentNum.split(separator: ".").compactMap { Int($0) }
 
         for i in 0..<max(remoteParts.count, currentParts.count) {
             let r = i < remoteParts.count ? remoteParts[i] : 0
@@ -293,6 +296,16 @@ final class OTAUpdater: ObservableObject {
             if r > c { return true }
             if r < c { return false }
         }
+
+        // Same numeric version: release > pre-release
+        if currentPre != nil && remotePre == nil { return true }
         return false
+    }
+
+    private func splitVersion(_ version: String) -> (numeric: String, preRelease: String?) {
+        let parts = version.split(separator: "-", maxSplits: 1)
+        let numeric = String(parts[0])
+        let pre = parts.count > 1 ? String(parts[1]) : nil
+        return (numeric, pre)
     }
 }

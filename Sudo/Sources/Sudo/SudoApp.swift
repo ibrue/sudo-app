@@ -10,15 +10,20 @@ struct SudoApp: App {
 
     private let dotTimer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
 
-    /// Fixed 4-char content between brackets: "sudo" or animated dots
+    /// Fixed 4-char content between brackets
     private var menuBarLabel: String {
-        if engine.isProcessing {
+        switch engine.lastResult {
+        case .success:
+            return "[ OK ]"
+        case .failure:
+            return "[FAIL]"
+        case .processing:
             let frame = dotFrame % 4
-            // Use middle dot (·) and underscore for consistent monospace width
             let patterns = ["·___", "··__", "···_", "····"]
             return "[\(patterns[frame])]"
+        case .idle:
+            return "[sudo]"
         }
-        return "[sudo]"
     }
 
     var body: some Scene {

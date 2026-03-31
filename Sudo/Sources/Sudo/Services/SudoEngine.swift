@@ -1,13 +1,20 @@
 import Cocoa
+import UserNotifications
 
 /// Central orchestrator: receives pad actions and coordinates detection → execution.
 final class SudoEngine: ObservableObject {
+
+    enum ActionResult: Equatable {
+        case idle, processing, success, failure
+    }
 
     @Published var lastAction: String = "Waiting for input..."
     @Published var lastMethod: String = ""
     @Published var detectedApp: String = "No AI app detected"
     @Published var isConnected: Bool = false
     @Published var isProcessing: Bool = false
+    @Published var lastResult: ActionResult = .idle
+    @Published var actionLog: [ActionLogEntry] = []
 
     var searchAllApps: Bool {
         get { SudoSettings.shared.searchAllApps }
@@ -19,6 +26,9 @@ final class SudoEngine: ObservableObject {
     private let ocrFinder = OCRButtonFinder()
     private let executor = ActionExecutor()
     private let hotkeyListener = HotkeyListener()
+    private var lastActionTime: Date = .distantPast
+    private let debounceDuration: TimeInterval = 0.5
+    private let searchTimeout: TimeInterval = 3.0
 
     /// Trigger an action programmatically (for the test panel UI)
     func triggerAction(_ padAction: PadAction) {
@@ -31,16 +41,21 @@ final class SudoEngine: ObservableObject {
         hotkeyListener.start { [weak self] action in
             self?.handleAction(action)
         }
-        isConnected = true
+        isConnected = hotkeyListener.isListening
 
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        // Event-driven app detection via NSWorkspace notifications
+        let nc = NSWorkspace.shared.notificationCenter
+        nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
             self?.updateDetectedApp()
         }
+        // Initial detection
+        updateDetectedApp()
     }
 
     func stop() {
         hotkeyListener.stop()
         isConnected = false
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     private func updateDetectedApp() {
@@ -53,11 +68,18 @@ final class SudoEngine: ObservableObject {
     }
 
     private func handleAction(_ action: PadAction) {
-        DispatchQueue.main.async { self.isProcessing = true }
-        defer { DispatchQueue.main.async { self.isProcessing = false } }
+        // Debounce: ignore rapid double-presses
+        let now = Date()
+        guard now.timeIntervalSince(lastActionTime) >= debounceDuration else {
+            print("[sudo] Debounced: \(action.displayName) (too fast)")
+            return
+        }
+        lastActionTime = now
 
         DispatchQueue.main.async {
-            self.lastAction = "Processing: \(action.displayName)..."
+            self.isProcessing = true
+            self.lastResult = .processing
+            self.lastAction = "Searching: \(action.displayName)..."
             self.lastMethod = ""
         }
 
@@ -69,31 +91,31 @@ final class SudoEngine: ObservableObject {
         } else if let app = appDetector.detectFrontmostApp() {
             appsToSearch = [app]
         } else {
-            DispatchQueue.main.async {
-                self.lastAction = "\(action.displayName) — no AI app in focus"
-                self.lastMethod = ""
-            }
+            finishAction(action: action, success: false, app: "none", method: "",
+                         statusText: "\(action.displayName) — no AI app in focus")
             return
         }
 
         for app in appsToSearch {
             print("[sudo] Target: \(app.name) (PID \(app.pid)), action: \(action.displayName)")
 
-            // Strategy 1: AX tree (preferred)
-            let axResult = axFinder.findButton(for: action, pid: app.pid)
-            if axResult.succeeded {
+            // Strategy 1: AX tree with timeout
+            if let axResult = withTimeout(seconds: searchTimeout, work: {
+                self.axFinder.findButton(for: action, pid: app.pid)
+            }), axResult.succeeded {
                 let execResult = executor.execute(result: axResult)
-                updateStatus(action: action, execResult: execResult, method: "AX Tree (\(app.name))")
+                handleExecResult(execResult, action: action, app: app.name, method: "AX Tree")
                 return
             }
 
             print("[sudo] AX tree miss for \(app.name) — trying OCR")
 
-            // Strategy 2: Vision OCR fallback
-            let ocrResult = ocrFinder.findButton(for: action, pid: app.pid)
-            if ocrResult.succeeded {
+            // Strategy 2: Vision OCR with timeout
+            if let ocrResult = withTimeout(seconds: searchTimeout, work: {
+                self.ocrFinder.findButton(for: action, pid: app.pid)
+            }), ocrResult.succeeded {
                 let execResult = executor.execute(result: ocrResult)
-                updateStatus(action: action, execResult: execResult, method: "Vision OCR (\(app.name))")
+                handleExecResult(execResult, action: action, app: app.name, method: "Vision OCR")
                 return
             }
 
@@ -102,19 +124,78 @@ final class SudoEngine: ObservableObject {
                 print("[sudo] AX+OCR miss for editor \(app.name) — sending keypress")
                 if let keyCode = action.editorKeyCode {
                     sendKeypress(keyCode: keyCode, to: app.pid)
-                    updateStatus(action: action,
-                                 execResult: .success(method: "Keypress"),
-                                 method: "Keyboard (\(app.name))")
+                    finishAction(action: action, success: true, app: app.name,
+                                 method: "Keyboard → keyCode \(keyCode)",
+                                 statusText: action.displayName)
                     return
                 }
             }
         }
 
         let appNames = appsToSearch.map { $0.name }.joined(separator: ", ")
-        DispatchQueue.main.async {
-            self.lastAction = "\(action.displayName) — button not found"
-            self.lastMethod = "Searched: \(appNames)"
+        finishAction(action: action, success: false, app: appNames, method: "AX + OCR",
+                     statusText: "\(action.displayName) — button not found")
+    }
+
+    // MARK: - Helpers
+
+    private func handleExecResult(_ execResult: ActionExecutor.ExecutionResult, action: PadAction, app: String, method: String) {
+        switch execResult {
+        case .success(let detail):
+            finishAction(action: action, success: true, app: app,
+                         method: "\(method) → \(detail)", statusText: action.displayName)
+        case .failure(let reason):
+            finishAction(action: action, success: false, app: app,
+                         method: "\(method): \(reason)",
+                         statusText: "\(action.displayName) — failed")
         }
+    }
+
+    private func finishAction(action: PadAction, success: Bool, app: String, method: String, statusText: String) {
+        let entry = ActionLogEntry(
+            timestamp: Date(), action: action.displayName,
+            app: app, method: method, succeeded: success
+        )
+
+        DispatchQueue.main.async {
+            self.lastAction = statusText
+            self.lastMethod = method
+            self.isProcessing = false
+            self.lastResult = success ? .success : .failure
+            self.actionLog.insert(entry, at: 0)
+            if self.actionLog.count > 50 { self.actionLog = Array(self.actionLog.prefix(50)) }
+
+            // Sound feedback
+            if SudoSettings.shared.soundEnabled {
+                NSSound(named: success ? .purr : .basso)?.play()
+            }
+
+            // macOS notification on failure
+            if !success && SudoSettings.shared.notifyOnFailure {
+                self.sendFailureNotification(action: action, app: app)
+            }
+
+            // Reset flash after 1.5 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if self.lastResult == .success || self.lastResult == .failure {
+                    self.lastResult = .idle
+                }
+            }
+        }
+
+        print("[sudo] \(success ? "OK" : "FAIL"): \(action.displayName) via \(method)")
+    }
+
+    /// Run work with a timeout — returns nil if timed out
+    private func withTimeout<T>(seconds: TimeInterval, work: @escaping () -> T) -> T? {
+        var result: T?
+        let semaphore = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            result = work()
+            semaphore.signal()
+        }
+        let status = semaphore.wait(timeout: .now() + seconds)
+        return status == .success ? result : nil
     }
 
     /// Send a keypress to the target app
@@ -123,10 +204,12 @@ final class SudoEngine: ObservableObject {
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
 
-        // Target the specific process
-        let targetApp = NSRunningApplication(processIdentifier: pid)
-        targetApp?.activate(options: [])
-        usleep(100_000) // 100ms for app to come to front
+        // Only activate if not already frontmost
+        if let targetApp = NSRunningApplication(processIdentifier: pid),
+           !targetApp.isActive {
+            targetApp.activate(options: [])
+            usleep(100_000)
+        }
 
         keyDown?.post(tap: .cghidEventTap)
         usleep(50_000)
@@ -135,19 +218,11 @@ final class SudoEngine: ObservableObject {
         print("[sudo] Sent keyCode \(keyCode) to PID \(pid)")
     }
 
-    private func updateStatus(action: PadAction, execResult: ActionExecutor.ExecutionResult, method: String) {
-        switch execResult {
-        case .success(let detail):
-            DispatchQueue.main.async {
-                self.lastAction = "\(action.displayName)"
-                self.lastMethod = "\(method) → \(detail)"
-            }
-            print("[sudo] OK: \(action.displayName) via \(method) → \(detail)")
-        case .failure(let reason):
-            DispatchQueue.main.async {
-                self.lastAction = "\(action.displayName) — failed"
-                self.lastMethod = "\(method): \(reason)"
-            }
-        }
+    private func sendFailureNotification(action: PadAction, app: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "[sudo] Action failed"
+        content.body = "\(action.displayName) — button not found in \(app)"
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 }

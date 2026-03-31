@@ -6,6 +6,8 @@ struct MenuBarView: View {
     @ObservedObject var settings = SudoSettings.shared
     @State private var showTestPanel = false
     @State private var showRemapPanel = false
+    @State private var showHistory = false
+    @State private var showSettings = false
     @State private var editingAction: PadAction? = nil
     @State private var editName = ""
     @State private var editTerms = ""
@@ -25,6 +27,24 @@ struct MenuBarView: View {
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.top, 14)
             .padding(.bottom, 10)
+
+            // Permission warning
+            if !engine.isConnected {
+                HStack(spacing: 6) {
+                    Text("⚠ accessibility permission required")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.error)
+                    Spacer()
+                    Button("open") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    }
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.accent)
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, SudoTheme.spacingMd)
+                .padding(.bottom, 8)
+            }
 
             divider
 
@@ -76,9 +96,61 @@ struct MenuBarView: View {
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
+            // Action history
+            divider
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: { showHistory.toggle() }) {
+                    HStack {
+                        Text("> history (\(engine.actionLog.count))")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                        Spacer()
+                        Text(showHistory ? "▾" : "▸")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showHistory {
+                    if engine.actionLog.isEmpty {
+                        Text("no actions yet")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.textMuted)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(engine.actionLog.prefix(20)) { entry in
+                                    HStack(spacing: 6) {
+                                        Text(entry.succeeded ? "✓" : "✗")
+                                            .font(SudoTheme.mono(size: 9))
+                                            .foregroundColor(entry.succeeded ? SudoTheme.accent : SudoTheme.error)
+                                            .frame(width: 10)
+                                        Text(entry.timeString)
+                                            .font(SudoTheme.mono(size: 9))
+                                            .foregroundColor(SudoTheme.textMuted)
+                                        Text(entry.action)
+                                            .font(SudoTheme.mono(size: 9))
+                                            .foregroundColor(SudoTheme.text)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text(entry.app)
+                                            .font(SudoTheme.mono(size: 8))
+                                            .foregroundColor(SudoTheme.surface)
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 120)
+                    }
+                }
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 10)
+
             // Test panel
             divider
-
             VStack(alignment: .leading, spacing: 6) {
                 Button(action: { showTestPanel.toggle() }) {
                     HStack {
@@ -133,20 +205,29 @@ struct MenuBarView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 4)
+                }
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 10)
 
-                    // Search all apps toggle
-                    Button(action: { engine.searchAllApps.toggle() }) {
-                        HStack {
-                            Text(engine.searchAllApps ? "[x]" : "[ ]")
-                                .font(SudoTheme.mono(size: 10))
-                                .foregroundColor(SudoTheme.accent)
-                            Text("search all apps (not just focused)")
-                                .font(SudoTheme.mono(size: 9))
-                                .foregroundColor(SudoTheme.textMuted)
-                        }
+            // Settings
+            divider
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: { showSettings.toggle() }) {
+                    HStack {
+                        Text("> settings")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                        Spacer()
+                        Text(showSettings ? "▾" : "▸")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.top, 4)
+                }
+                .buttonStyle(.plain)
+
+                if showSettings {
+                    settingsToggles
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
@@ -155,7 +236,6 @@ struct MenuBarView: View {
             // Update banner
             if updater.updateAvailable {
                 divider
-
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("update available")
@@ -227,6 +307,35 @@ struct MenuBarView: View {
         }
         .frame(width: 320)
         .background(SudoTheme.bg)
+    }
+
+    // MARK: - Settings toggles
+
+    @ViewBuilder
+    private var settingsToggles: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            settingToggle("search all apps", isOn: Binding(
+                get: { engine.searchAllApps },
+                set: { engine.searchAllApps = $0 }
+            ))
+            settingToggle("sound feedback", isOn: $settings.soundEnabled)
+            settingToggle("notify on failure", isOn: $settings.notifyOnFailure)
+            settingToggle("launch at login", isOn: $settings.launchAtLogin)
+        }
+    }
+
+    private func settingToggle(_ label: String, isOn: Binding<Bool>) -> some View {
+        Button(action: { isOn.wrappedValue.toggle() }) {
+            HStack {
+                Text(isOn.wrappedValue ? "[x]" : "[ ]")
+                    .font(SudoTheme.mono(size: 10))
+                    .foregroundColor(SudoTheme.accent)
+                Text(label)
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Remap Panel

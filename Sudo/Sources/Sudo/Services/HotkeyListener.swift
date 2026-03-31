@@ -10,6 +10,9 @@ final class HotkeyListener {
     private var runLoopSource: CFRunLoopSource?
     private var handler: ActionHandler?
 
+    /// Whether the event tap was created successfully
+    var isListening: Bool { eventTap != nil }
+
     private static let keyMap: [UInt16: PadAction] = {
         var map = [UInt16: PadAction]()
         for action in PadAction.allCases {
