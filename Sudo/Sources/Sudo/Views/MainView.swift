@@ -52,16 +52,28 @@ struct MainView: View {
 
             // Compact status line
             HStack {
-                Text("app:")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.textMuted)
-                Text(engine.detectedApp.lowercased())
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.text)
-                    .lineLimit(1)
-                Text("·")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.border)
+                if SudoSettings.shared.isSimpleMode {
+                    Text("mode:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text("simple")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                    Text("·")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.border)
+                } else {
+                    Text("app:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text(engine.detectedApp.lowercased())
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.text)
+                        .lineLimit(1)
+                    Text("·")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.border)
+                }
                 Text("last:")
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)

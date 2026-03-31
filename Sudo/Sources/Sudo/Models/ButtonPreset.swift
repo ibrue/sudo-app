@@ -153,7 +153,7 @@ struct ButtonPreset: Identifiable {
     static let mediaControls = ButtonPreset(
         id: "media",
         name: "Media Controls",
-        description: "play / next / prev / mute",
+        description: "play / next / prev / like",
         buttons: [
             .approve: .init(displayName: "Play / Pause", searchTerms: [], mode: .mediaKey,
                            keyCombo: KeyCombo(keyCode: 16, modifiers: [])),  // NX_KEYTYPE_PLAY
@@ -161,8 +161,10 @@ struct ButtonPreset: Identifiable {
                           keyCombo: KeyCombo(keyCode: 17, modifiers: [])),   // NX_KEYTYPE_NEXT
             .action3: .init(displayName: "Previous Track", searchTerms: [], mode: .mediaKey,
                            keyCombo: KeyCombo(keyCode: 18, modifiers: [])),  // NX_KEYTYPE_PREVIOUS
-            .action4: .init(displayName: "Mute", searchTerms: [], mode: .mediaKey,
-                           keyCombo: KeyCombo(keyCode: 7, modifiers: [])),   // NX_KEYTYPE_MUTE
+            .action4: .init(displayName: "Like / Star", searchTerms: [
+                "Love", "Like", "Favorite", "Heart", "Star",
+                "Add to Favorites", "Add to Library",
+            ]),
         ]
     )
 

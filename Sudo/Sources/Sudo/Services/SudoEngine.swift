@@ -71,11 +71,11 @@ final class SudoEngine: ObservableObject {
 
     private let appDetector = AppDetector()
     private let axFinder = AXButtonFinder()
+    private let automationFinder = AutomationButtonFinder()
     private let ocrFinder = OCRButtonFinder()
     private let executor = ActionExecutor()
     private let hotkeyListener = HotkeyListener()
     private var lastActionTime: Date = .distantPast
-    private let debounceDuration: TimeInterval = 0.1
     private let searchTimeout: TimeInterval = 3.0
     private var autoApproveTimer: Timer?
     private var permissionCheckTimer: Timer?
@@ -253,7 +253,7 @@ final class SudoEngine: ObservableObject {
     private func handleAction(_ action: PadAction) {
         // Debounce: ignore rapid double-presses
         let now = Date()
-        guard now.timeIntervalSince(lastActionTime) >= debounceDuration else {
+        guard now.timeIntervalSince(lastActionTime) >= SudoSettings.shared.debounceDuration else {
             print("[sudo] debounced: \(action.displayName.lowercased()) (too fast)")
             return
         }
@@ -336,9 +336,21 @@ final class SudoEngine: ObservableObject {
                 return
             }
 
-            print("[sudo] AX tree miss for \(app.name) — trying OCR")
+            print("[sudo] AX tree miss for \(app.name) — trying Automation")
 
-            // Strategy 2: Vision OCR with timeout
+            // Strategy 2: Automation (System Events AppleScript) — reaches sheets, alerts, nested dialogs
+            if let autoResult = withTimeout(seconds: searchTimeout, work: {
+                self.automationFinder.findAndClick(for: action, processName: app.name, bundleID: activeBundleID)
+            }), autoResult.succeeded {
+                // Automation already clicked the button — just report success
+                finishAction(action: action, success: true, app: app.name,
+                             method: "Automation → clicked", statusText: action.displayName.lowercased(), context: context)
+                return
+            }
+
+            print("[sudo] Automation miss for \(app.name) — trying OCR")
+
+            // Strategy 3: Vision OCR with timeout
             if let ocrResult = withTimeout(seconds: searchTimeout, work: {
                 self.ocrFinder.findButton(for: action, pid: app.pid)
             }), ocrResult.succeeded {
@@ -347,7 +359,7 @@ final class SudoEngine: ObservableObject {
                 return
             }
 
-            // Strategy 3: Keyboard shortcut for editors/terminals
+            // Strategy 4: Keyboard shortcut for editors/terminals
             if SupportedApp.editorBundleIDs.contains(app.bundleID) {
                 print("[sudo] AX+OCR miss for editor \(app.name) — sending keypress")
                 if let keyCode = action.editorKeyCode {

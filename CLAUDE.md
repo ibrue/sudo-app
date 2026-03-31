@@ -53,8 +53,10 @@
 - `SudoEngine` — central orchestrator, owns detection → execution pipeline
 - `AppDetector` — identifies frontmost app via bundle ID or browser tab
 - `AXButtonFinder` — walks accessibility tree to find buttons (primary, 30-level depth)
+- `AutomationButtonFinder` — AppleScript via System Events for hard-to-reach buttons (sheets, alerts, nested dialogs)
 - `OCRButtonFinder` — Vision framework screenshot OCR (fallback)
 - `ActionExecutor` — presses buttons via AXPress or CGEvent click (with center-click fallback)
+- `FirmwareFlasher` — detects RP2040 bootloader, copies UF2 firmware for simple mode presets
 - `HotkeyListener` — configurable CGEvent tap (default: Ctrl+Shift+F13–F16)
 - `LocalAPIServer` — HTTP API on port 7483 + MCP server endpoints
 - `WebhookManager` — fires POST to user-configured URL on each action
@@ -73,22 +75,31 @@
 
 ## Action Pipeline
 1. HotkeyListener receives keypress → dispatches to background queue
-2. Debounce check (100ms)
+2. Debounce check (configurable, default 20ms)
 3. Macro check (if button has assigned macro, execute sequence)
 4. Mode check:
    - `keyCombo` → send keyboard shortcut directly, done
    - `mediaKey` → send media key event, done
    - `aiSearch` → continue to detection pipeline
 5. App detection (frontmost app, or all apps if search-all enabled)
-6. AX tree search (3s timeout) → OCR fallback (3s timeout) → keyboard fallback (editors only)
+6. AX tree search (3s timeout) → Automation/AppleScript (3s timeout) → OCR fallback (3s timeout) → keyboard fallback (editors only)
 7. Execute action (AXPress → center click fallback)
 8. Finish: update UI, sound, webhook, telemetry, LED, notification
 
 ## Permissions
 - Accessibility required for hotkey listener + AX tree reading
+- Automation (System Events) required for AutomationButtonFinder — reaches sheets, alerts, nested dialogs
 - Permission check runs every 3s until connected, auto-retries event tap
 - `isConnected` = hotkey event tap successfully created (no AX test needed)
 - Screen Recording permission needed for OCR fallback only
+
+## Simple Mode & Firmware Flashing
+- Simple mode = all 4 buttons use keyCombo or mediaKey (no aiSearch)
+- `SudoSettings.isSimpleMode` computed property checks all button modes
+- When simple mode is active, pad can be flashed to work natively without companion app
+- `FirmwareFlasher` detects RP2040 bootloader (RPI-RP2 USB volume) and copies UF2 files
+- Pre-built firmware profiles for each preset (default, shortcuts, media, browsing, discord, custom)
+- UF2 files looked up in: bundle resources → ~/Library/Application Support/Sudo/Firmware/
 
 ## Build
 ```bash

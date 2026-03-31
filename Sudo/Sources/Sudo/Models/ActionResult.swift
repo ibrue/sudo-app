@@ -16,5 +16,6 @@ enum ActionResult {
 
 enum DetectionMethod: String {
     case accessibilityTree = "AX Tree"
+    case automation        = "Automation"
     case ocr               = "Vision OCR"
 }

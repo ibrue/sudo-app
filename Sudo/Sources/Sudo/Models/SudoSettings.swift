@@ -49,6 +49,20 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(telemetryEnabled, forKey: "telemetryEnabled") }
     }
 
+    /// Debounce duration in seconds (default 0.02 = 20ms)
+    @Published var debounceDuration: Double {
+        didSet { defaults.set(debounceDuration, forKey: "debounceDuration") }
+    }
+
+    /// Simple mode: all buttons use keyCombo or mediaKey (no AI search needed).
+    /// When enabled, the pad can be flashed to work natively without the companion app.
+    var isSimpleMode: Bool {
+        PadAction.allCases.allSatisfy { action in
+            let mode = actionMode(for: action)
+            return mode == .keyCombo || mode == .mediaKey
+        }
+    }
+
     /// Action mode per button (aiSearch, keyCombo, mediaKey)
     @Published var buttonModes: [String: String] {
         didSet { defaults.set(buttonModes, forKey: "buttonModes") }
@@ -158,6 +172,7 @@ final class SudoSettings: ObservableObject {
         self.apiPort = defaults.object(forKey: "apiPort") == nil ? 7483 : defaults.integer(forKey: "apiPort")
         self.apiKey = defaults.string(forKey: "apiKey") ?? Self.generateAPIKey()
         self.telemetryEnabled = defaults.object(forKey: "telemetryEnabled") == nil ? true : defaults.bool(forKey: "telemetryEnabled")
+        self.debounceDuration = defaults.object(forKey: "debounceDuration") == nil ? 0.02 : defaults.double(forKey: "debounceDuration")
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
         self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]
