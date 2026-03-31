@@ -235,6 +235,11 @@ final class SudoEngine: ObservableObject {
     }
 
     private func updateDetectedApp() {
+        // Always show the frontmost app — not just AI apps
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let frontName = frontApp?.localizedName ?? "none"
+        let frontBundleID = frontApp?.bundleIdentifier
+
         if let app = appDetector.detectFrontmostApp() {
             let label = app.isBrowser ? "\(app.name) (\(app.matchedDomain ?? "web"))" : app.name
             DispatchQueue.main.async {
@@ -242,10 +247,8 @@ final class SudoEngine: ObservableObject {
                 self.currentBundleID = app.bundleID
             }
         } else {
-            // Also track non-AI apps for per-app profiles
-            let frontBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
             DispatchQueue.main.async {
-                self.detectedApp = "No AI app detected"
+                self.detectedApp = frontName
                 self.currentBundleID = frontBundleID
             }
         }
@@ -281,10 +284,11 @@ final class SudoEngine: ObservableObject {
 
         // Check action mode — simple modes skip the AI search pipeline entirely
         let mode = SudoSettings.shared.actionMode(for: action)
+        let frontAppName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "system"
 
         if mode == .keyCombo, let kc = SudoSettings.shared.keyCombo(for: action) {
             sendKeyComboDirect(keyCode: kc.keyCode, modifiers: kc.modifiers)
-            finishAction(action: action, success: true, app: "system",
+            finishAction(action: action, success: true, app: frontAppName,
                          method: "keyCombo → \(action.displayName)",
                          statusText: action.displayName)
             return
@@ -292,7 +296,7 @@ final class SudoEngine: ObservableObject {
 
         if mode == .mediaKey, let kc = SudoSettings.shared.keyCombo(for: action) {
             sendMediaKey(keyType: Int32(kc.keyCode))
-            finishAction(action: action, success: true, app: "system",
+            finishAction(action: action, success: true, app: frontAppName,
                          method: "mediaKey → \(action.displayName)",
                          statusText: action.displayName)
             return
@@ -314,9 +318,19 @@ final class SudoEngine: ObservableObject {
             appsToSearch = appDetector.detectAllSupportedApps()
         } else if let app = appDetector.detectFrontmostApp() {
             appsToSearch = [app]
+        } else if let frontApp = NSWorkspace.shared.frontmostApplication {
+            // Not a recognized AI app, but still try the frontmost app
+            let detected = AppDetector.DetectedApp(
+                bundleID: frontApp.bundleIdentifier ?? "",
+                name: frontApp.localizedName ?? "unknown",
+                pid: frontApp.processIdentifier,
+                isBrowser: false,
+                matchedDomain: nil
+            )
+            appsToSearch = [detected]
         } else {
             finishAction(action: action, success: false, app: "none", method: "",
-                         statusText: "\(action.displayName) — no AI app in focus")
+                         statusText: "\(action.displayName) — no app in focus")
             return
         }
 
