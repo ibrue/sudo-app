@@ -362,7 +362,7 @@ final class SudoEngine: ObservableObject {
 
         let appNames = appsToSearch.map { $0.name }.joined(separator: ", ")
         finishAction(action: action, success: false, app: appNames, method: "AX + OCR",
-                     statusText: "\(action.displayName) — button not found")
+                     statusText: "\(action.displayName.lowercased()) — button not found")
     }
 
     // MARK: - Helpers
@@ -501,7 +501,7 @@ final class SudoEngine: ObservableObject {
     private func sendFailureNotification(action: PadAction, app: String) {
         let content = UNMutableNotificationContent()
         content.title = "[sudo] Action failed"
-        content.body = "\(action.displayName) — button not found in \(app)"
+        content.body = "\(action.displayName.lowercased()) — button not found in \(app)"
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }

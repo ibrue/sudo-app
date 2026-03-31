@@ -42,10 +42,10 @@ enum PadAction: String, CaseIterable {
 
     var defaultDisplayName: String {
         switch self {
-        case .approve: return "Approve / Yes"
-        case .reject:  return "Reject / No"
-        case .action3: return "Make it better"
-        case .action4: return "YOLO (allow all)"
+        case .approve: return "approve / yes"
+        case .reject:  return "reject / no"
+        case .action3: return "make it better"
+        case .action4: return "yolo (allow all)"
         }
     }
 

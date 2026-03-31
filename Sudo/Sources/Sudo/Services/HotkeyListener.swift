@@ -72,7 +72,7 @@ final class HotkeyListener {
             if keyCode == bindingKeyCode && matchesModifiers(flags, required: requiredMods) {
                 print("[sudo] Received: \(action.displayName) (button \(action.buttonNumber), keyCode \(keyCode))")
 
-                DispatchQueue.main.async { [weak self] in
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                     self?.handler?(action)
                 }
 
