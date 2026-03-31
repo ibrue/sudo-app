@@ -221,7 +221,5 @@ struct ButtonPreset: Identifiable {
                 print("[sudo] preset \(id): button \(action.buttonNumber) = \(config.displayName) (\(config.mode.rawValue))")
             }
         }
-            }
-        }
     }
 }
