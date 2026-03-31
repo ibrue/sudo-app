@@ -102,14 +102,10 @@ final class SudoSettings: ObservableObject {
         }
     }
 
-    // MARK: - Usage Stats / Gamification
+    // MARK: - Usage Stats
 
-    @Published var totalApproves: Int {
-        didSet { defaults.set(totalApproves, forKey: "totalApproves") }
-    }
-
-    @Published var totalRejects: Int {
-        didSet { defaults.set(totalRejects, forKey: "totalRejects") }
+    @Published var totalPresses: Int {
+        didSet { defaults.set(totalPresses, forKey: "totalPresses") }
     }
 
     @Published var currentStreak: Int {
@@ -119,6 +115,10 @@ final class SudoSettings: ObservableObject {
     @Published var lastActiveDate: String {
         didSet { defaults.set(lastActiveDate, forKey: "lastActiveDate") }
     }
+
+    // Legacy (kept for migration)
+    var totalApproves: Int { get { 0 } set {} }
+    var totalRejects: Int { get { 0 } set {} }
 
     /// Per-app profiles keyed by bundle ID.
     /// Structure: [bundleID: [actionRawValue: ["name": String, "searchTerms": [String]]]]
@@ -177,8 +177,9 @@ final class SudoSettings: ObservableObject {
         } else {
             self.autoApproveRules = Self.defaultAutoApproveRules()
         }
-        self.totalApproves = defaults.integer(forKey: "totalApproves")
-        self.totalRejects = defaults.integer(forKey: "totalRejects")
+        // Migrate old approve/reject counters to totalPresses
+        let oldTotal = defaults.integer(forKey: "totalApproves") + defaults.integer(forKey: "totalRejects")
+        self.totalPresses = max(defaults.integer(forKey: "totalPresses"), oldTotal)
         self.currentStreak = defaults.integer(forKey: "currentStreak")
         self.lastActiveDate = defaults.string(forKey: "lastActiveDate") ?? ""
         if let macroData = defaults.data(forKey: "macros"),

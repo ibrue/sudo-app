@@ -100,7 +100,7 @@ struct MainView: View {
 
             // Stats
             HStack {
-                Text("\(SudoSettings.shared.totalApproves) approves · \(SudoSettings.shared.totalRejects) rejects · \(SudoSettings.shared.currentStreak) day streak")
+                Text("\(SudoSettings.shared.totalPresses) presses · \(SudoSettings.shared.currentStreak) day streak")
                     .font(SudoTheme.mono(size: 8))
                     .foregroundColor(SudoTheme.surface)
                 Spacer()

@@ -389,13 +389,9 @@ final class SudoEngine: ObservableObject {
         // LED feedback
         PadCommunicator.shared.sendState(success ? .success : .failure)
 
-        // Usage stats / gamification
+        // Usage stats
         let settings = SudoSettings.shared
-        if action == .approve {
-            settings.totalApproves += 1
-        } else if action == .reject {
-            settings.totalRejects += 1
-        }
+        settings.totalPresses += 1
         settings.updateStreak()
 
         DispatchQueue.main.async {
