@@ -10,6 +10,7 @@ final class SudoEngine: ObservableObject {
 
     @Published var lastAction: String = "Waiting for input..."
     @Published var lastMethod: String = ""
+    @Published var lastContext: String = ""
     @Published var detectedApp: String = "No AI app detected"
     @Published var currentBundleID: String? = nil
     @Published var isConnected: Bool = false
@@ -51,6 +52,9 @@ final class SudoEngine: ObservableObject {
         }
         // Initial detection
         updateDetectedApp()
+
+        // Load plugins
+        PluginManager.shared.loadPlugins()
 
         SudoTelemetry.shared.trackLaunch()
     }
@@ -131,12 +135,15 @@ final class SudoEngine: ObservableObject {
         for app in appsToSearch {
             print("[sudo] Target: \(app.name) (PID \(app.pid)), action: \(action.displayName)")
 
+            // Capture context before executing
+            let context = axFinder.captureContext(pid: app.pid)
+
             // Strategy 1: AX tree with timeout
             if let axResult = withTimeout(seconds: searchTimeout, work: {
                 self.axFinder.findButton(for: action, pid: app.pid, bundleID: activeBundleID)
             }), axResult.succeeded {
                 let execResult = executor.execute(result: axResult)
-                handleExecResult(execResult, action: action, app: app.name, method: "AX Tree")
+                handleExecResult(execResult, action: action, app: app.name, method: "AX Tree", context: context)
                 return
             }
 
@@ -147,7 +154,7 @@ final class SudoEngine: ObservableObject {
                 self.ocrFinder.findButton(for: action, pid: app.pid)
             }), ocrResult.succeeded {
                 let execResult = executor.execute(result: ocrResult)
-                handleExecResult(execResult, action: action, app: app.name, method: "Vision OCR")
+                handleExecResult(execResult, action: action, app: app.name, method: "Vision OCR", context: context)
                 return
             }
 
@@ -158,7 +165,7 @@ final class SudoEngine: ObservableObject {
                     sendKeypress(keyCode: keyCode, to: app.pid)
                     finishAction(action: action, success: true, app: app.name,
                                  method: "Keyboard → keyCode \(keyCode)",
-                                 statusText: action.displayName)
+                                 statusText: action.displayName, context: context)
                     return
                 }
             }

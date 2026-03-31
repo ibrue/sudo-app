@@ -62,6 +62,20 @@ final class SudoSettings: ObservableObject {
         }
     }
 
+    // MARK: - Auto-Approve Settings
+
+    @Published var autoApproveEnabled: Bool {
+        didSet { defaults.set(autoApproveEnabled, forKey: "autoApproveEnabled") }
+    }
+
+    @Published var autoApproveRules: [AutoApproveRule] {
+        didSet {
+            if let data = try? JSONEncoder().encode(autoApproveRules) {
+                defaults.set(data, forKey: "autoApproveRules")
+            }
+        }
+    }
+
     /// Macro sequences (chained actions)
     @Published var macros: [MacroSequence] {
         didSet {
@@ -136,6 +150,13 @@ final class SudoSettings: ObservableObject {
             self.buttonSearchTerms = [:]
         }
         self.appProfiles = Self.loadAppProfiles(from: defaults)
+        self.autoApproveEnabled = defaults.bool(forKey: "autoApproveEnabled")
+        if let rulesData = defaults.data(forKey: "autoApproveRules"),
+           let savedRules = try? JSONDecoder().decode([AutoApproveRule].self, from: rulesData) {
+            self.autoApproveRules = savedRules
+        } else {
+            self.autoApproveRules = Self.defaultAutoApproveRules()
+        }
         self.totalApproves = defaults.integer(forKey: "totalApproves")
         self.totalRejects = defaults.integer(forKey: "totalRejects")
         self.currentStreak = defaults.integer(forKey: "currentStreak")
@@ -146,6 +167,23 @@ final class SudoSettings: ObservableObject {
         } else {
             self.macros = Self.defaultMacros()
         }
+    }
+
+    static func defaultAutoApproveRules() -> [AutoApproveRule] {
+        var fileReads = AutoApproveRule(
+            name: "auto-approve file reads",
+            contextExcludes: "rm,delete,sudo,git push,DROP"
+        )
+        fileReads.enabled = false
+
+        var cursor = AutoApproveRule(
+            name: "auto-approve in Cursor",
+            appFilter: "cursor",
+            contextExcludes: "rm,delete,sudo"
+        )
+        cursor.enabled = false
+
+        return [fileReads, cursor]
     }
 
     static func defaultMacros() -> [MacroSequence] {

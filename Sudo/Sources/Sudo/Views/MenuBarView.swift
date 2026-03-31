@@ -586,6 +586,88 @@ struct MenuBarView: View {
     @ViewBuilder
     private var remapPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Per-app profiles
+            Button(action: { showAppProfiles.toggle() }) {
+                HStack {
+                    Text("> per-app profiles")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Spacer()
+                    Text(showAppProfiles ? "▾" : "▸")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if showAppProfiles {
+                VStack(alignment: .leading, spacing: 6) {
+                    // Current app with save button
+                    HStack {
+                        Text("current app:")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                        Text(engine.detectedApp.lowercased())
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.text)
+                            .lineLimit(1)
+                        Spacer()
+                        if let bid = engine.currentBundleID {
+                            Button("save profile for this app") {
+                                var buttons: [PadAction: ButtonPreset.ButtonConfig] = [:]
+                                for action in PadAction.allCases {
+                                    buttons[action] = ButtonPreset.ButtonConfig(
+                                        displayName: settings.displayName(for: action),
+                                        searchTerms: settings.searchTerms(for: action)
+                                    )
+                                }
+                                let preset = ButtonPreset(id: bid, name: bid, description: "", buttons: buttons)
+                                settings.saveProfile(forBundleID: bid, preset: preset)
+                            }
+                            .font(SudoTheme.mono(size: 7))
+                            .foregroundColor(SudoTheme.accent)
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    // List of saved profiles
+                    if !settings.appProfiles.isEmpty {
+                        ForEach(Array(settings.appProfiles.keys.sorted()), id: \.self) { bundleID in
+                            HStack {
+                                let shortName = bundleID.split(separator: ".").last.map(String.init) ?? bundleID
+                                Text(shortName.lowercased())
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(SudoTheme.text)
+                                Text(bundleID)
+                                    .font(SudoTheme.mono(size: 7))
+                                    .foregroundColor(SudoTheme.surface)
+                                    .lineLimit(1)
+                                Spacer()
+                                if engine.currentBundleID == bundleID {
+                                    Text("active")
+                                        .font(SudoTheme.mono(size: 7))
+                                        .foregroundColor(SudoTheme.accent)
+                                }
+                                Button("delete") {
+                                    settings.deleteProfile(forBundleID: bundleID)
+                                }
+                                .font(SudoTheme.mono(size: 7))
+                                .foregroundColor(SudoTheme.error)
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    } else {
+                        Text("no saved profiles")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                }
+                .padding(6)
+                .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+            }
+
+            divider
+
             // Quick presets
             Text("quick presets:")
                 .font(SudoTheme.mono(size: 9))
