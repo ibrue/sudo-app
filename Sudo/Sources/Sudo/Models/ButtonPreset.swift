@@ -202,6 +202,11 @@ struct ButtonPreset: Identifiable {
     func apply() {
         SudoTelemetry.shared.trackPresetApplied(preset: id)
         let settings = SudoSettings.shared
+        // Clear all existing button config first
+        settings.buttonNames = [:]
+        settings.buttonSearchTerms = [:]
+        settings.buttonModes = [:]
+        settings.buttonKeyCombos = [:]
         for action in PadAction.allCases {
             if let config = buttons[action] {
                 settings.buttonNames[action.rawValue] = config.displayName
@@ -212,9 +217,10 @@ struct ButtonPreset: Identifiable {
                         "keyCode": Int(kc.keyCode),
                         "modifiers": Int(kc.modifiers.rawValue)
                     ]
-                } else {
-                    settings.buttonKeyCombos.removeValue(forKey: action.rawValue)
                 }
+                print("[sudo] preset \(id): button \(action.buttonNumber) = \(config.displayName) (\(config.mode.rawValue))")
+            }
+        }
             }
         }
     }

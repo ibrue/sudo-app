@@ -185,6 +185,7 @@ struct MenuBarView: View {
                     remapPanel
                 } else {
                     ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
+                        let mode = settings.actionMode(for: action)
                         HStack(spacing: 0) {
                             // Color stripe matching physical button
                             Rectangle()
@@ -199,6 +200,11 @@ struct MenuBarView: View {
                                 .font(SudoTheme.mono(size: 11))
                                 .foregroundColor(SudoTheme.text)
                             Spacer()
+                            if mode != .aiSearch {
+                                Text(mode == .keyCombo ? "⌨" : "♫")
+                                    .font(SudoTheme.mono(size: 9))
+                                    .foregroundColor(SudoTheme.surface)
+                            }
                         }
                     }
                 }
