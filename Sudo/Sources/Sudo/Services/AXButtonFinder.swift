@@ -19,8 +19,8 @@ final class AXButtonFinder {
         AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
 
         var orderedWindows = windows
-        if let focused = focusedWindow as? AXUIElement {
-            orderedWindows.insert(focused, at: 0)
+        if let focused = focusedWindow {
+            orderedWindows.insert(focused as! AXUIElement, at: 0)
         }
 
         for window in orderedWindows {
@@ -156,10 +156,11 @@ final class AXButtonFinder {
 
         var focusedWindow: AnyObject?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow) == .success,
-              let window = focusedWindow as? AXUIElement else { return nil }
+              let window = focusedWindow else { return nil }
+        let axWindow = window as! AXUIElement
 
         var collected: [String] = []
-        collectContextText(element: window, collected: &collected, depth: 0)
+        collectContextText(element: axWindow, collected: &collected, depth: 0)
 
         guard !collected.isEmpty else { return nil }
         let joined = collected.joined(separator: " ")
