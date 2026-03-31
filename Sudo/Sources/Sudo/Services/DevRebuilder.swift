@@ -1,59 +1,115 @@
 import Cocoa
 
 /// Pulls latest code from git, rebuilds, and relaunches the app.
-/// One-click dev workflow from the menu bar.
+/// Captures full build output for the terminal view.
 final class DevRebuilder: ObservableObject {
     @Published var isRebuilding = false
     @Published var status = ""
+    @Published var buildLog: [String] = []
 
-    /// Path to the source repo (detected from the running app's bundle)
+    /// Path to the source repo
     private var repoPath: String {
-        // If running from /Applications/Sudo.app, the source is ~/sudo-app
-        // If running from dist/, walk up from the bundle
         let bundlePath = Bundle.main.bundlePath
         if bundlePath.contains("/dist/") {
             return (bundlePath as NSString).deletingLastPathComponent
                 .replacingOccurrences(of: "/dist", with: "")
         }
-        // Default to ~/sudo-app
         return NSHomeDirectory() + "/sudo-app"
+    }
+
+    /// Run an arbitrary shell command and capture output
+    func runCommand(_ command: String) {
+        appendLog("$ \(command)")
+
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = ["-c", command]
+            process.currentDirectoryURL = URL(fileURLWithPath: repoPath)
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            // Stream output line by line
+            pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                let data = handle.availableData
+                guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
+                for line in lines {
+                    self?.appendLog(line)
+                }
+            }
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+                pipe.fileHandleForReading.readabilityHandler = nil
+                // Read any remaining data
+                let remaining = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let text = String(data: remaining, encoding: .utf8), !text.isEmpty {
+                    for line in text.components(separatedBy: "\n") where !line.isEmpty {
+                        appendLog(line)
+                    }
+                }
+                let code = process.terminationStatus
+                appendLog(code == 0 ? "[exit 0]" : "[exit \(code) — failed]")
+            } catch {
+                appendLog("[error: \(error.localizedDescription)]")
+            }
+        }
     }
 
     func rebuild() {
         guard !isRebuilding else { return }
         isRebuilding = true
+        buildLog = []
         status = "pulling..."
 
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let steps: [(String, [String])] = [
-                ("pulling...", ["git", "pull", "origin", "main"]),
-                ("building...", ["bash", "-c", "cd \(repoPath)/Sudo && swift build -c release"]),
-                ("installing...", ["bash", "-c", """
-                    rm -rf /Applications/Sudo.app && \
-                    bash \(repoPath)/build.sh && \
-                    cp -r \(repoPath)/dist/Sudo.app /Applications/Sudo.app
-                    """]),
+            let steps: [(String, String)] = [
+                ("pulling...", "git pull origin main"),
+                ("building...", "cd \(repoPath) && rm -rf Sudo/.build && ./build.sh"),
+                ("installing...", "rm -rf /Applications/Sudo.app && cp -r \(repoPath)/dist/Sudo.app /Applications/Sudo.app"),
             ]
 
-            for (label, args) in steps {
-                DispatchQueue.main.async { self.status = label }
+            for (label, command) in steps {
+                DispatchQueue.main.async {
+                    self.status = label
+                }
+                appendLog("--- \(label) ---")
+                appendLog("$ \(command)")
 
                 let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-                process.arguments = args
+                process.executableURL = URL(fileURLWithPath: "/bin/bash")
+                process.arguments = ["-c", command]
                 process.currentDirectoryURL = URL(fileURLWithPath: repoPath)
 
                 let pipe = Pipe()
                 process.standardOutput = pipe
                 process.standardError = pipe
 
+                pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                    let data = handle.availableData
+                    guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                    for line in text.components(separatedBy: "\n") where !line.isEmpty {
+                        self?.appendLog(line)
+                    }
+                }
+
                 do {
                     try process.run()
                     process.waitUntilExit()
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    let remaining = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let text = String(data: remaining, encoding: .utf8), !text.isEmpty {
+                        for line in text.components(separatedBy: "\n") where !line.isEmpty {
+                            appendLog(line)
+                        }
+                    }
 
                     if process.terminationStatus != 0 {
-                        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                        print("[sudo] Rebuild failed at '\(label)': \(output)")
+                        appendLog("[exit \(process.terminationStatus) — failed]")
                         DispatchQueue.main.async {
                             self.status = "failed at \(label)"
                             self.isRebuilding = false
@@ -61,6 +117,7 @@ final class DevRebuilder: ObservableObject {
                         return
                     }
                 } catch {
+                    appendLog("[error: \(error.localizedDescription)]")
                     DispatchQueue.main.async {
                         self.status = "error: \(error.localizedDescription)"
                         self.isRebuilding = false
@@ -69,17 +126,30 @@ final class DevRebuilder: ObservableObject {
                 }
             }
 
-            // Relaunch
+            appendLog("--- relaunching... ---")
             DispatchQueue.main.async {
                 self.status = "relaunching..."
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    let appPath = "/Applications/Sudo.app"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     let process = Process()
                     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                    process.arguments = ["-n", appPath]
+                    process.arguments = ["-n", "/Applications/Sudo.app"]
                     try? process.run()
                     NSApp.terminate(nil)
                 }
+            }
+        }
+    }
+
+    func clearLog() {
+        buildLog = []
+    }
+
+    private func appendLog(_ line: String) {
+        DispatchQueue.main.async {
+            self.buildLog.append(line)
+            // Keep last 200 lines
+            if self.buildLog.count > 200 {
+                self.buildLog = Array(self.buildLog.suffix(200))
             }
         }
     }

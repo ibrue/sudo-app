@@ -18,6 +18,8 @@ struct MenuBarView: View {
     @State private var editName = ""
     @State private var editTerms = ""
     @State private var showAppProfiles = false
+    @State private var showTerminal = false
+    @State private var terminalInput = ""
     @State private var showMacros = false
     @State private var editingMacroID: UUID? = nil
     @State private var showAutoApprove = false
@@ -417,6 +419,97 @@ struct MenuBarView: View {
 
                 if showAPI {
                     apiPanel
+                }
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 10)
+
+            // Terminal / build log
+            divider
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: { showTerminal.toggle() }) {
+                    HStack {
+                        Text("> terminal")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                        if rebuilder.isRebuilding {
+                            Text("building...")
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.accent)
+                        } else if !rebuilder.buildLog.isEmpty {
+                            Text("(\(rebuilder.buildLog.count) lines)")
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.textMuted)
+                        }
+                        Spacer()
+                        Text(showTerminal ? "▾" : "▸")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showTerminal {
+                    // Log output
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 1) {
+                                ForEach(Array(rebuilder.buildLog.enumerated()), id: \.offset) { idx, line in
+                                    Text(line)
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundColor(
+                                            line.hasPrefix("$") ? SudoTheme.accent :
+                                            line.hasPrefix("---") ? SudoTheme.textMuted :
+                                            line.contains("error") || line.contains("failed") ? SudoTheme.error :
+                                            line.contains("warning") ? Color(hex: 0xD4B85C) :
+                                            SudoTheme.text
+                                        )
+                                        .textSelection(.enabled)
+                                        .id(idx)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: 150)
+                        .padding(6)
+                        .background(Color(hex: 0x050505))
+                        .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                        .onChange(of: rebuilder.buildLog.count) { _ in
+                            if let last = rebuilder.buildLog.indices.last {
+                                proxy.scrollTo(last, anchor: .bottom)
+                            }
+                        }
+                    }
+
+                    // Command input
+                    HStack(spacing: 4) {
+                        Text("$")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.accent)
+                        TextField("command...", text: $terminalInput)
+                            .font(SudoTheme.mono(size: 9))
+                            .textFieldStyle(.plain)
+                            .foregroundColor(SudoTheme.text)
+                            .onSubmit {
+                                let cmd = terminalInput.trimmingCharacters(in: .whitespaces)
+                                guard !cmd.isEmpty else { return }
+                                terminalInput = ""
+                                rebuilder.runCommand(cmd)
+                            }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color(hex: 0x050505))
+                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+
+                    // Action buttons
+                    HStack(spacing: 8) {
+                        Button("clear") { rebuilder.clearLog() }
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                            .buttonStyle(.plain)
+                        Spacer()
+                    }
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
