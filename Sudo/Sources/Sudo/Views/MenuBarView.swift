@@ -185,12 +185,17 @@ struct MenuBarView: View {
                     remapPanel
                 } else {
                     ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
-                        HStack {
+                        HStack(spacing: 0) {
+                            // Color stripe matching physical button
+                            Rectangle()
+                                .fill(Color(hex: action.buttonColorHex))
+                                .frame(width: 3, height: 20)
+                                .padding(.trailing, 8)
                             Text("\(action.buttonNumber)")
-                                .font(SudoTheme.mono(size: 11, weight: .bold))
-                                .foregroundColor(Color(hex: action.buttonColorHex))
-                                .frame(width: 16, alignment: .leading)
-                            Text(action.displayName)
+                                .font(SudoTheme.mono(size: 10))
+                                .foregroundColor(SudoTheme.textMuted)
+                                .frame(width: 14, alignment: .leading)
+                            Text(action.displayName.lowercased())
                                 .font(SudoTheme.mono(size: 11))
                                 .foregroundColor(SudoTheme.text)
                             Spacer()
@@ -274,26 +279,22 @@ struct MenuBarView: View {
                 .buttonStyle(.plain)
 
                 if showTestPanel {
-                    Text("Click to simulate button presses:")
-                        .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.textMuted)
-                        .padding(.bottom, 2)
-
-                    HStack(spacing: 6) {
-                        ForEach(PadAction.allCases, id: \.rawValue) { padAction in
+                    HStack(spacing: 4) {
+                        ForEach(PadAction.physicalOrder, id: \.rawValue) { padAction in
                             Button(action: { engine.triggerAction(padAction) }) {
                                 VStack(spacing: 2) {
-                                    Text("F\(padAction.fKeyNumber)")
+                                    Text("\(padAction.buttonNumber)")
                                         .font(SudoTheme.mono(size: 10, weight: .bold))
                                     Text(padAction.rawValue)
-                                        .font(SudoTheme.mono(size: 8))
+                                        .font(SudoTheme.mono(size: 7))
                                 }
-                                .foregroundColor(SudoTheme.accent)
+                                .foregroundColor(SudoTheme.text)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
+                                .padding(.vertical, 6)
+                                .background(Color(hex: padAction.buttonColorHex).opacity(0.15))
                                 .overlay(
                                     Rectangle()
-                                        .stroke(SudoTheme.accent, lineWidth: SudoTheme.borderWidth)
+                                        .stroke(Color(hex: padAction.buttonColorHex).opacity(0.4), lineWidth: SudoTheme.borderWidth)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -1248,16 +1249,8 @@ struct MenuBarView: View {
     @ViewBuilder
     private var remapPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Visual device layout — matches physical button colors (top to bottom)
-            VStack(spacing: 4) {
-                Text("[sudo]")
-                    .font(SudoTheme.mono(size: 8, weight: .bold))
-                    .foregroundColor(SudoTheme.accent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-                    .background(SudoTheme.bg)
-                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
-
+            // Visual device layout — clean, matches website design language
+            VStack(spacing: 0) {
                 // Buttons in physical order: top (black) to bottom (green)
                 ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
                     Button(action: {
@@ -1269,35 +1262,38 @@ struct MenuBarView: View {
                             editingAction = action
                         }
                     }) {
-                        HStack {
-                            Text("\(action.buttonNumber)")
-                                .font(SudoTheme.mono(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 16)
-                            Text(action.displayName.lowercased())
-                                .font(SudoTheme.mono(size: 9))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                            Spacer()
-                            if editingAction == action {
-                                Text("editing")
-                                    .font(SudoTheme.mono(size: 7))
-                                    .foregroundColor(.white.opacity(0.6))
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color(hex: action.buttonColorHex))
-                        .overlay(
+                        HStack(spacing: 0) {
+                            // Left color stripe
                             Rectangle()
-                                .stroke(editingAction == action ? Color.white : Color(hex: action.buttonColorHex).opacity(0.5), lineWidth: editingAction == action ? 2 : 1)
-                        )
+                                .fill(Color(hex: action.buttonColorHex))
+                                .frame(width: 3)
+                            HStack {
+                                Text("\(action.buttonNumber)")
+                                    .font(SudoTheme.mono(size: 10))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .frame(width: 14, alignment: .leading)
+                                Text(action.displayName.lowercased())
+                                    .font(SudoTheme.mono(size: 10))
+                                    .foregroundColor(editingAction == action ? SudoTheme.accent : SudoTheme.text)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("F\(action.fKeyNumber)")
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(SudoTheme.surface)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                        }
+                        .background(editingAction == action ? SudoTheme.bgSecondary : SudoTheme.bg)
                     }
                     .buttonStyle(.plain)
+
+                    // Divider between buttons
+                    if action != PadAction.physicalOrder.first {
+                        Rectangle().fill(SudoTheme.border).frame(height: 1)
+                    }
                 }
             }
-            .padding(6)
-            .background(Color(hex: 0x1A1A1A))
             .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
 
             // Edit panel for selected button
