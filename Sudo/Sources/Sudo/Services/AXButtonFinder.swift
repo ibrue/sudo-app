@@ -156,7 +156,7 @@ final class AXButtonFinder {
 
         var focusedWindow: AnyObject?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow) == .success,
-              let window = focusedWindow as! AXUIElement? else { return nil }
+              let window = focusedWindow as? AXUIElement else { return nil }
 
         var collected: [String] = []
         collectContextText(element: window, collected: &collected, depth: 0)

@@ -195,13 +195,10 @@ struct MenuBarView: View {
                                 .font(SudoTheme.mono(size: 10))
                                 .foregroundColor(SudoTheme.textMuted)
                                 .frame(width: 14, alignment: .leading)
-                            Text(action.displayName.lowercased())
+                            Text(action.displayName)
                                 .font(SudoTheme.mono(size: 11))
                                 .foregroundColor(SudoTheme.text)
                             Spacer()
-                            Text("F\(action.fKeyNumber)")
-                                .font(SudoTheme.mono(size: 8))
-                                .foregroundColor(SudoTheme.surface)
                         }
                     }
                 }
@@ -303,7 +300,7 @@ struct MenuBarView: View {
                                             .font(SudoTheme.mono(size: 9))
                                             .foregroundColor(SudoTheme.textMuted)
                                             .frame(width: 12, alignment: .leading)
-                                        Text(padAction.displayName.lowercased())
+                                        Text(padAction.displayName)
                                             .font(SudoTheme.mono(size: 9))
                                             .foregroundColor(SudoTheme.text)
                                             .lineLimit(1)
@@ -367,22 +364,22 @@ struct MenuBarView: View {
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
-            // Plugins
-            divider
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("> plugins (\(pluginManager.loadedPlugins.count))")
-                        .font(SudoTheme.mono(size: 10))
-                        .foregroundColor(SudoTheme.textMuted)
-                    Spacer()
-                    Button(action: { pluginManager.openPluginsFolder() }) {
-                        Text("open folder")
-                            .font(SudoTheme.mono(size: 9))
-                            .foregroundColor(SudoTheme.accent)
+            // Plugins (only visible when plugins are loaded)
+            if pluginManager.loadedPlugins.count > 0 {
+                divider
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("> plugins (\(pluginManager.loadedPlugins.count))")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                        Spacer()
+                        Button(action: { pluginManager.openPluginsFolder() }) {
+                            Text("open folder")
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.accent)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                }
-                if !pluginManager.loadedPlugins.isEmpty {
                     ForEach(pluginManager.loadedPlugins) { plugin in
                         HStack {
                             Text(plugin.name)
@@ -396,9 +393,9 @@ struct MenuBarView: View {
                         }
                     }
                 }
+                .padding(.horizontal, SudoTheme.spacingMd)
+                .padding(.vertical, 10)
             }
-            .padding(.horizontal, SudoTheme.spacingMd)
-            .padding(.vertical, 10)
 
             // Settings
             divider
@@ -432,7 +429,7 @@ struct MenuBarView: View {
                             .font(SudoTheme.mono(size: 10))
                             .foregroundColor(SudoTheme.textMuted)
                         if settings.autoApproveEnabled {
-                            Text("ON")
+                            Text("on")
                                 .font(SudoTheme.mono(size: 8))
                                 .foregroundColor(SudoTheme.accent)
                         }
@@ -451,7 +448,8 @@ struct MenuBarView: View {
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
-            // Terminal / build log
+            // Terminal / build log (developer only)
+            if isDeveloperMode {
             divider
             VStack(alignment: .leading, spacing: 6) {
                 Button(action: { showTerminal.toggle() }) {
@@ -548,6 +546,7 @@ struct MenuBarView: View {
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
+            } // end isDeveloperMode
 
             // Update banner
             if updater.updateAvailable {
@@ -571,7 +570,7 @@ struct MenuBarView: View {
                             .foregroundColor(SudoTheme.textMuted)
                     } else {
                         Button(action: { updater.installUpdate() }) {
-                            Text("[ INSTALL UPDATE ]")
+                            Text("[ install update ]")
                                 .font(SudoTheme.mono(size: 11))
                                 .foregroundColor(SudoTheme.accent)
                                 .frame(maxWidth: .infinity)
@@ -591,7 +590,7 @@ struct MenuBarView: View {
             divider
 
             // Rebuild from git
-            if rebuilder.isRebuilding {
+            if isDeveloperMode && rebuilder.isRebuilding {
                 HStack {
                     Text("rebuilding: \(rebuilder.status)")
                         .font(SudoTheme.mono(size: 9))
@@ -605,19 +604,21 @@ struct MenuBarView: View {
 
             // Footer
             HStack(spacing: 8) {
-                Button("Pull & Rebuild") {
-                    rebuilder.rebuild()
-                }
-                .buttonStyle(.plain)
-                .font(SudoTheme.mono(size: 10))
-                .foregroundColor(rebuilder.isRebuilding ? SudoTheme.textMuted : SudoTheme.accent)
-                .disabled(rebuilder.isRebuilding)
-
-                Text("·")
+                if isDeveloperMode {
+                    Button("pull & rebuild") {
+                        rebuilder.rebuild()
+                    }
+                    .buttonStyle(.plain)
                     .font(SudoTheme.mono(size: 10))
-                    .foregroundColor(SudoTheme.border)
+                    .foregroundColor(rebuilder.isRebuilding ? SudoTheme.textMuted : SudoTheme.accent)
+                    .disabled(rebuilder.isRebuilding)
 
-                Button("Updates") {
+                    Text("·")
+                        .font(SudoTheme.mono(size: 10))
+                        .foregroundColor(SudoTheme.border)
+                }
+
+                Button("updates") {
                     updater.checkForUpdates()
                 }
                 .buttonStyle(.plain)
@@ -628,7 +629,7 @@ struct MenuBarView: View {
                     .font(SudoTheme.mono(size: 10))
                     .foregroundColor(SudoTheme.border)
 
-                Button("Bug?") {
+                Button("bug?") {
                     BugReporter.shared.fileReport(engine: engine)
                 }
                 .buttonStyle(.plain)
@@ -637,7 +638,7 @@ struct MenuBarView: View {
 
                 Spacer()
 
-                Button("Quit") {
+                Button("quit") {
                     NSApplication.shared.terminate(nil)
                 }
                 .buttonStyle(.plain)
@@ -1127,7 +1128,7 @@ struct MenuBarView: View {
                         .lineLimit(2)
                     if let assigned = macro.assignedButton, let action = PadAction(rawValue: assigned) {
                         HStack {
-                            Text("assigned to F\(action.fKeyNumber)")
+                            Text("assigned to button \(action.buttonNumber)")
                                 .font(SudoTheme.mono(size: 8))
                                 .foregroundColor(SudoTheme.accent)
                             Spacer()
@@ -1297,7 +1298,7 @@ struct MenuBarView: View {
                                     .font(SudoTheme.mono(size: 10))
                                     .foregroundColor(SudoTheme.textMuted)
                                     .frame(width: 14, alignment: .leading)
-                                Text(action.displayName.lowercased())
+                                Text(action.displayName)
                                     .font(SudoTheme.mono(size: 10))
                                     .foregroundColor(editingAction == action ? SudoTheme.accent : SudoTheme.text)
                                     .lineLimit(1)
@@ -1494,6 +1495,10 @@ struct MenuBarView: View {
     }
 
     // MARK: - Helpers
+
+    private var isDeveloperMode: Bool {
+        FileManager.default.fileExists(atPath: NSHomeDirectory() + "/sudo-app/build.sh")
+    }
 
     private var divider: some View {
         Rectangle()
