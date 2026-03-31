@@ -20,6 +20,12 @@ struct MenuBarView: View {
     @State private var showAppProfiles = false
     @State private var showMacros = false
     @State private var editingMacroID: UUID? = nil
+    @State private var showAutoApprove = false
+    @State private var editingRuleID: UUID? = nil
+    @State private var editRuleName = ""
+    @State private var editRuleAppFilter = ""
+    @State private var editRuleContextContains = ""
+    @State private var editRuleContextExcludes = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -323,6 +329,34 @@ struct MenuBarView: View {
 
                 if showSettings {
                     settingsToggles
+                }
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 10)
+
+            // Auto-Approve
+            divider
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: { showAutoApprove.toggle() }) {
+                    HStack {
+                        Text("> auto-approve")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                        if settings.autoApproveEnabled {
+                            Text("ON")
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.accent)
+                        }
+                        Spacer()
+                        Text(showAutoApprove ? "▾" : "▸")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showAutoApprove {
+                    autoApprovePanel
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
