@@ -532,6 +532,202 @@ struct MenuBarView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Auto-Approve Panel
+
+    @ViewBuilder
+    private var autoApprovePanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Warning
+            Text("experimental — auto-presses approve when rules match")
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(SudoTheme.error)
+
+            // Master toggle
+            settingToggle("enable auto-approve", isOn: Binding(
+                get: { settings.autoApproveEnabled },
+                set: {
+                    settings.autoApproveEnabled = $0
+                    engine.startAutoApproveTimer()
+                }
+            ))
+
+            if settings.autoApproveEnabled {
+                // Stats
+                HStack {
+                    Text("auto-approved:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text("\(engine.autoApproveCount)")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                }
+
+                divider
+
+                // Rules list
+                Text("rules:")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+
+                ForEach(Array(settings.autoApproveRules.enumerated()), id: \.element.id) { index, rule in
+                    if editingRuleID == rule.id {
+                        // Inline editor
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Text("name")
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .frame(width: 50, alignment: .trailing)
+                                TextField("rule name", text: $editRuleName)
+                                    .font(SudoTheme.mono(size: 9))
+                                    .textFieldStyle(.plain)
+                                    .foregroundColor(SudoTheme.text)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            }
+                            HStack(spacing: 4) {
+                                Text("app")
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .frame(width: 50, alignment: .trailing)
+                                TextField("bundle id filter", text: $editRuleAppFilter)
+                                    .font(SudoTheme.mono(size: 9))
+                                    .textFieldStyle(.plain)
+                                    .foregroundColor(SudoTheme.text)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            }
+                            HStack(spacing: 4) {
+                                Text("contains")
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .frame(width: 50, alignment: .trailing)
+                                TextField("context must contain", text: $editRuleContextContains)
+                                    .font(SudoTheme.mono(size: 9))
+                                    .textFieldStyle(.plain)
+                                    .foregroundColor(SudoTheme.text)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            }
+                            HStack(spacing: 4) {
+                                Text("excludes")
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .frame(width: 50, alignment: .trailing)
+                                TextField("safety exclusions (comma-sep)", text: $editRuleContextExcludes)
+                                    .font(SudoTheme.mono(size: 9))
+                                    .textFieldStyle(.plain)
+                                    .foregroundColor(SudoTheme.text)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            }
+                            HStack(spacing: 8) {
+                                Spacer()
+                                Button("save") {
+                                    settings.autoApproveRules[index].name = editRuleName
+                                    settings.autoApproveRules[index].appFilter = editRuleAppFilter.isEmpty ? nil : editRuleAppFilter
+                                    settings.autoApproveRules[index].contextContains = editRuleContextContains.isEmpty ? nil : editRuleContextContains
+                                    settings.autoApproveRules[index].contextExcludes = editRuleContextExcludes.isEmpty ? nil : editRuleContextExcludes
+                                    editingRuleID = nil
+                                }
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.accent)
+                                .buttonStyle(.plain)
+
+                                Button("delete") {
+                                    settings.autoApproveRules.remove(at: index)
+                                    editingRuleID = nil
+                                }
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.error)
+                                .buttonStyle(.plain)
+
+                                Button("cancel") { editingRuleID = nil }
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.textMuted)
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(6)
+                        .overlay(Rectangle().stroke(SudoTheme.accent.opacity(0.3), lineWidth: 1))
+                    } else {
+                        // Display mode
+                        HStack {
+                            Button(action: {
+                                settings.autoApproveRules[index].enabled.toggle()
+                            }) {
+                                Text(rule.enabled ? "[x]" : "[ ]")
+                                    .font(SudoTheme.mono(size: 10))
+                                    .foregroundColor(SudoTheme.accent)
+                            }
+                            .buttonStyle(.plain)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(rule.name)
+                                    .font(SudoTheme.mono(size: 9))
+                                    .foregroundColor(rule.enabled ? SudoTheme.text : SudoTheme.textMuted)
+                                    .lineLimit(1)
+                                HStack(spacing: 4) {
+                                    if let app = rule.appFilter, !app.isEmpty {
+                                        Text("app: \(app)")
+                                            .font(SudoTheme.mono(size: 7))
+                                            .foregroundColor(SudoTheme.surface)
+                                    }
+                                    if let excludes = rule.contextExcludes, !excludes.isEmpty {
+                                        Text("excludes: \(excludes)")
+                                            .font(SudoTheme.mono(size: 7))
+                                            .foregroundColor(SudoTheme.error.opacity(0.7))
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+
+                            Spacer()
+
+                            Button("edit") {
+                                editRuleName = rule.name
+                                editRuleAppFilter = rule.appFilter ?? ""
+                                editRuleContextContains = rule.contextContains ?? ""
+                                editRuleContextExcludes = rule.contextExcludes ?? ""
+                                editingRuleID = rule.id
+                            }
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.accent)
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Add rule button
+                Button(action: {
+                    var newRule = AutoApproveRule(name: "new rule")
+                    newRule.enabled = false
+                    settings.autoApproveRules.append(newRule)
+                    editRuleName = newRule.name
+                    editRuleAppFilter = ""
+                    editRuleContextContains = ""
+                    editRuleContextExcludes = ""
+                    editingRuleID = newRule.id
+                }) {
+                    Text("[ add rule ]")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                        .overlay(
+                            Rectangle()
+                                .stroke(SudoTheme.border, lineWidth: SudoTheme.borderWidth)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     // MARK: - API Panel
 
     @ViewBuilder

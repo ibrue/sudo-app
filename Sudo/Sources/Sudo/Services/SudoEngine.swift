@@ -19,6 +19,49 @@ final class SudoEngine: ObservableObject {
     @Published var actionLog: [ActionLogEntry] = []
     @Published var autoApproveCount: Int = 0
 
+    // MARK: - MCP Server support
+
+    @Published var pendingMCPRequest: String? = nil
+
+    /// Semaphore used to block MCP request-approval calls until a physical button press.
+    private let mcpSemaphore = DispatchSemaphore(value: 0)
+    private var mcpApprovalResult: Bool = false
+
+    /// Called by the API server when an MCP approval request arrives.
+    /// Blocks until `resolveMCPRequest(approved:)` is called or timeout expires.
+    /// - Returns: `true` if approved, `false` if rejected or timed out.
+    func waitForMCPApproval(prompt: String, timeout: TimeInterval) -> (approved: Bool, timeMs: Int) {
+        DispatchQueue.main.async {
+            self.pendingMCPRequest = prompt
+        }
+        PadCommunicator.shared.sendState(.waitingForInput)
+
+        let start = DispatchTime.now()
+        let result = mcpSemaphore.wait(timeout: .now() + timeout)
+        let elapsed = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
+        let timeMs = Int(elapsed / 1_000_000)
+
+        let approved: Bool
+        if result == .timedOut {
+            approved = false
+        } else {
+            approved = mcpApprovalResult
+        }
+
+        DispatchQueue.main.async {
+            self.pendingMCPRequest = nil
+        }
+        PadCommunicator.shared.sendState(approved ? .success : .failure)
+
+        return (approved: approved, timeMs: timeMs)
+    }
+
+    /// Resolve a pending MCP approval request (called from physical button press or UI).
+    func resolveMCPRequest(approved: Bool) {
+        mcpApprovalResult = approved
+        mcpSemaphore.signal()
+    }
+
     var searchAllApps: Bool {
         get { SudoSettings.shared.searchAllApps }
         set { SudoSettings.shared.searchAllApps = newValue; objectWillChange.send() }
@@ -61,6 +104,10 @@ final class SudoEngine: ObservableObject {
         // Start auto-approve polling if enabled
         startAutoApproveTimer()
 
+        // Connect to pad for LED feedback
+        PadCommunicator.shared.connect()
+        PadCommunicator.shared.sendState(.idle)
+
         SudoTelemetry.shared.trackLaunch()
     }
 
@@ -69,6 +116,7 @@ final class SudoEngine: ObservableObject {
         isConnected = false
         autoApproveTimer?.invalidate()
         autoApproveTimer = nil
+        PadCommunicator.shared.disconnect()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
@@ -173,6 +221,8 @@ final class SudoEngine: ObservableObject {
         }
         lastActionTime = now
 
+        PadCommunicator.shared.sendState(.processing)
+
         DispatchQueue.main.async {
             self.isProcessing = true
             self.lastResult = .processing
@@ -260,6 +310,18 @@ final class SudoEngine: ObservableObject {
             context: context
         )
 
+        // LED feedback
+        PadCommunicator.shared.sendState(success ? .success : .failure)
+
+        // Usage stats / gamification
+        let settings = SudoSettings.shared
+        if action == .approve {
+            settings.totalApproves += 1
+        } else if action == .reject {
+            settings.totalRejects += 1
+        }
+        settings.updateStreak()
+
         DispatchQueue.main.async {
             self.lastAction = statusText
             self.lastMethod = method
@@ -289,6 +351,7 @@ final class SudoEngine: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 if self.lastResult == .success || self.lastResult == .failure {
                     self.lastResult = .idle
+                    PadCommunicator.shared.sendState(.idle)
                 }
             }
         }
