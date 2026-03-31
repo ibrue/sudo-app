@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @ObservedObject var rebuilder: DevRebuilder
     @ObservedObject var apiServer: LocalAPIServer
     @ObservedObject var settings = SudoSettings.shared
+    @ObservedObject var pluginManager = PluginManager.shared
     @State private var showTestPanel = false
     @State private var showRemapPanel = false
     @State private var showHistory = false
@@ -83,6 +84,9 @@ struct MenuBarView: View {
                 statusRow(label: "last", value: engine.lastAction)
                 if !engine.lastMethod.isEmpty {
                     statusRow(label: "via", value: engine.lastMethod)
+                }
+                if !engine.lastContext.isEmpty {
+                    statusRow(label: "ctx", value: engine.lastContext)
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
@@ -263,6 +267,39 @@ struct MenuBarView: View {
 
                 if showMacros {
                     macrosPanel
+                }
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 10)
+
+            // Plugins
+            divider
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("> plugins (\(pluginManager.loadedPlugins.count))")
+                        .font(SudoTheme.mono(size: 10))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Spacer()
+                    Button(action: { pluginManager.openPluginsFolder() }) {
+                        Text("open folder")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if !pluginManager.loadedPlugins.isEmpty {
+                    ForEach(pluginManager.loadedPlugins) { plugin in
+                        HStack {
+                            Text(plugin.name)
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.text)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(plugin.bundle_ids.count) ids")
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.surface)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, SudoTheme.spacingMd)

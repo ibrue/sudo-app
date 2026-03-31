@@ -17,6 +17,7 @@ final class SudoEngine: ObservableObject {
     @Published var isProcessing: Bool = false
     @Published var lastResult: ActionResult = .idle
     @Published var actionLog: [ActionLogEntry] = []
+    @Published var autoApproveCount: Int = 0
 
     var searchAllApps: Bool {
         get { SudoSettings.shared.searchAllApps }
@@ -31,6 +32,7 @@ final class SudoEngine: ObservableObject {
     private var lastActionTime: Date = .distantPast
     private let debounceDuration: TimeInterval = 0.5
     private let searchTimeout: TimeInterval = 3.0
+    private var autoApproveTimer: Timer?
 
     /// Trigger an action programmatically (for the test panel UI)
     func triggerAction(_ padAction: PadAction) {
@@ -56,13 +58,74 @@ final class SudoEngine: ObservableObject {
         // Load plugins
         PluginManager.shared.loadPlugins()
 
+        // Start auto-approve polling if enabled
+        startAutoApproveTimer()
+
         SudoTelemetry.shared.trackLaunch()
     }
 
     func stop() {
         hotkeyListener.stop()
         isConnected = false
+        autoApproveTimer?.invalidate()
+        autoApproveTimer = nil
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+
+    // MARK: - Auto-Approve
+
+    /// Start or restart the auto-approve polling timer.
+    func startAutoApproveTimer() {
+        autoApproveTimer?.invalidate()
+        autoApproveTimer = nil
+        guard SudoSettings.shared.autoApproveEnabled else { return }
+        autoApproveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.checkAutoApprove()
+        }
+    }
+
+    private func checkAutoApprove() {
+        guard SudoSettings.shared.autoApproveEnabled else {
+            autoApproveTimer?.invalidate()
+            autoApproveTimer = nil
+            return
+        }
+        guard !isProcessing else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            guard let app = self.appDetector.detectFrontmostApp() else { return }
+
+            // Try to find an approve button via AX
+            let action = PadAction.approve
+            let activeBundleID = self.currentBundleID
+            guard let axResult = self.withTimeout(seconds: self.searchTimeout, work: {
+                self.axFinder.findButton(for: action, pid: app.pid, bundleID: activeBundleID)
+            }), axResult.succeeded else { return }
+
+            // Capture context for rule evaluation
+            let context = self.axFinder.captureContext(pid: app.pid)
+
+            // Check rules engine
+            guard let matchedRule = RulesEngine.shared.shouldAutoApprove(app: app, context: context) else { return }
+
+            print("[sudo] auto-approve triggered by rule: \(matchedRule.name)")
+
+            // Execute the approve action
+            let execResult = self.executor.execute(result: axResult)
+            let methodPrefix = "[auto] "
+            switch execResult {
+            case .success(let detail):
+                self.finishAction(action: action, success: true, app: app.name,
+                                  method: "\(methodPrefix)AX Tree → \(detail)",
+                                  statusText: "[auto] \(action.displayName)", context: context)
+                DispatchQueue.main.async { self.autoApproveCount += 1 }
+            case .failure(let reason):
+                self.finishAction(action: action, success: false, app: app.name,
+                                  method: "\(methodPrefix)AX Tree: \(reason)",
+                                  statusText: "[auto] \(action.displayName) — failed", context: context)
+            }
+        }
     }
 
     private func updateDetectedApp() {
@@ -178,27 +241,29 @@ final class SudoEngine: ObservableObject {
 
     // MARK: - Helpers
 
-    private func handleExecResult(_ execResult: ActionExecutor.ExecutionResult, action: PadAction, app: String, method: String) {
+    private func handleExecResult(_ execResult: ActionExecutor.ExecutionResult, action: PadAction, app: String, method: String, context: String? = nil) {
         switch execResult {
         case .success(let detail):
             finishAction(action: action, success: true, app: app,
-                         method: "\(method) → \(detail)", statusText: action.displayName)
+                         method: "\(method) → \(detail)", statusText: action.displayName, context: context)
         case .failure(let reason):
             finishAction(action: action, success: false, app: app,
                          method: "\(method): \(reason)",
-                         statusText: "\(action.displayName) — failed")
+                         statusText: "\(action.displayName) — failed", context: context)
         }
     }
 
-    private func finishAction(action: PadAction, success: Bool, app: String, method: String, statusText: String) {
+    private func finishAction(action: PadAction, success: Bool, app: String, method: String, statusText: String, context: String? = nil) {
         let entry = ActionLogEntry(
             timestamp: Date(), action: action.displayName,
-            app: app, method: method, succeeded: success
+            app: app, method: method, succeeded: success,
+            context: context
         )
 
         DispatchQueue.main.async {
             self.lastAction = statusText
             self.lastMethod = method
+            self.lastContext = context ?? ""
             self.isProcessing = false
             self.lastResult = success ? .success : .failure
             self.actionLog.insert(entry, at: 0)
