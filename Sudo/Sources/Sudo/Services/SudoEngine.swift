@@ -170,6 +170,9 @@ final class SudoEngine: ObservableObject {
                 NSSound(named: success ? .purr : .basso)?.play()
             }
 
+            // Fire webhook
+            WebhookManager.shared.fire(action: action, app: app, method: method, success: success)
+
             // macOS notification on failure
             if !success && SudoSettings.shared.notifyOnFailure {
                 self.sendFailureNotification(action: action, app: app)

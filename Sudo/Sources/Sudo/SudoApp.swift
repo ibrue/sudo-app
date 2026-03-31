@@ -6,6 +6,7 @@ struct SudoApp: App {
     @StateObject private var engine = SudoEngine()
     @StateObject private var updater = OTAUpdater()
     @StateObject private var rebuilder = DevRebuilder()
+    @StateObject private var apiServer = LocalAPIServer()
     @State private var hasLaunched = false
     @State private var dotFrame = 0
 
@@ -29,12 +30,13 @@ struct SudoApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(engine: engine, updater: updater, rebuilder: rebuilder)
+            MenuBarView(engine: engine, updater: updater, rebuilder: rebuilder, apiServer: apiServer)
                 .onAppear {
                     guard !hasLaunched else { return }
                     hasLaunched = true
                     engine.start()
                     updater.startPeriodicChecks()
+                    apiServer.start(engine: engine)
                 }
         } label: {
             Text(menuBarLabel)

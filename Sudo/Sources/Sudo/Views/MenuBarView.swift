@@ -4,11 +4,15 @@ struct MenuBarView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
     @ObservedObject var rebuilder: DevRebuilder
+    @ObservedObject var apiServer: LocalAPIServer
     @ObservedObject var settings = SudoSettings.shared
     @State private var showTestPanel = false
     @State private var showRemapPanel = false
     @State private var showHistory = false
     @State private var showSettings = false
+    @State private var showAPI = false
+    @State private var editWebhookURL = ""
+    @State private var copiedKey = false
     @State private var editingAction: PadAction? = nil
     @State private var editName = ""
     @State private var editTerms = ""
@@ -255,6 +259,34 @@ struct MenuBarView: View {
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
+            // Developer API
+            divider
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: { showAPI.toggle() }) {
+                    HStack {
+                        Text("> developer api")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                        if apiServer.isRunning {
+                            Text("ON")
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.accent)
+                        }
+                        Spacer()
+                        Text(showAPI ? "▾" : "▸")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showAPI {
+                    apiPanel
+                }
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 10)
+
             // Update banner
             if updater.updateAvailable {
                 divider
@@ -383,6 +415,126 @@ struct MenuBarView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - API Panel
+
+    @ViewBuilder
+    private var apiPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Enable toggle
+            settingToggle("enable local api", isOn: Binding(
+                get: { settings.apiEnabled },
+                set: {
+                    settings.apiEnabled = $0
+                    if $0 { apiServer.start(engine: engine) } else { apiServer.stop() }
+                }
+            ))
+
+            if settings.apiEnabled {
+                // Status
+                HStack {
+                    Text("status:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text(apiServer.isRunning ? "running on :\(settings.apiPort)" : "stopped")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(apiServer.isRunning ? SudoTheme.accent : SudoTheme.error)
+                    if apiServer.requestCount > 0 {
+                        Spacer()
+                        Text("\(apiServer.requestCount) req")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                }
+
+                // API Key
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("api key:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    HStack {
+                        Text(settings.apiKey)
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.text)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                        Button(copiedKey ? "copied!" : "copy") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(settings.apiKey, forType: .string)
+                            copiedKey = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copiedKey = false }
+                        }
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(copiedKey ? SudoTheme.accent : SudoTheme.textMuted)
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Webhook URL
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("webhook url (optional):")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    HStack {
+                        TextField("https://your-server.com/webhook", text: $editWebhookURL)
+                            .font(SudoTheme.mono(size: 9))
+                            .textFieldStyle(.plain)
+                            .foregroundColor(SudoTheme.text)
+                            .onAppear { editWebhookURL = settings.webhookURL }
+                        if editWebhookURL != settings.webhookURL {
+                            Button("save") {
+                                settings.webhookURL = editWebhookURL
+                            }
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.accent)
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Endpoints docs
+                divider
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("endpoints:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    endpointRow("GET", "/status", "device status")
+                    endpointRow("GET", "/log", "action history")
+                    endpointRow("GET", "/config", "button mappings")
+                    endpointRow("POST", "/trigger/approve", "trigger action")
+                }
+
+                // Example
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("example:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text("curl -H 'X-API-Key: \\(settings.apiKey.prefix(8))...' http://localhost:\\(settings.apiPort)/status")
+                        .font(SudoTheme.mono(size: 7))
+                        .foregroundColor(SudoTheme.surface)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func endpointRow(_ method: String, _ path: String, _ desc: String) -> some View {
+        HStack(spacing: 4) {
+            Text(method)
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(method == "POST" ? SudoTheme.accent : SudoTheme.textMuted)
+                .frame(width: 28, alignment: .leading)
+            Text(path)
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(SudoTheme.text)
+            Spacer()
+            Text(desc)
+                .font(SudoTheme.mono(size: 7))
+                .foregroundColor(SudoTheme.surface)
+        }
     }
 
     // MARK: - Remap Panel
