@@ -167,7 +167,7 @@ final class SudoEngine: ObservableObject {
 
             // Sound feedback
             if SudoSettings.shared.soundEnabled {
-                NSSound(named: success ? .purr : .basso)?.play()
+                NSSound(named: success ? "Purr" : "Basso")?.play()
             }
 
             // Fire webhook
