@@ -553,88 +553,145 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private var remapPanel: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            // Quick presets
+            Text("quick presets:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(ButtonPreset.all) { preset in
+                        Button(action: {
+                            preset.apply()
+                            editingAction = nil
+                        }) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(preset.name)
+                                    .font(SudoTheme.mono(size: 9, weight: .bold))
+                                    .foregroundColor(SudoTheme.accent)
+                                Text(preset.description)
+                                    .font(SudoTheme.mono(size: 7))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .overlay(
+                                Rectangle()
+                                    .stroke(SudoTheme.border, lineWidth: SudoTheme.borderWidth)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            divider
+
+            // Per-button editing
+            Text("custom mapping:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+
             ForEach(PadAction.allCases, id: \.rawValue) { action in
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("F\(action.fKeyNumber)")
-                            .font(SudoTheme.mono(size: 11))
-                            .foregroundColor(SudoTheme.accent)
-                            .frame(width: 30, alignment: .leading)
-
-                        if editingAction == action {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("name:")
-                                        .font(SudoTheme.mono(size: 9))
-                                        .foregroundColor(SudoTheme.textMuted)
-                                    TextField("", text: $editName)
-                                        .font(SudoTheme.mono(size: 10))
-                                        .textFieldStyle(.plain)
-                                        .foregroundColor(SudoTheme.text)
-                                }
-                                HStack {
-                                    Text("find:")
-                                        .font(SudoTheme.mono(size: 9))
-                                        .foregroundColor(SudoTheme.textMuted)
-                                    TextField("comma-separated terms", text: $editTerms)
-                                        .font(SudoTheme.mono(size: 10))
-                                        .textFieldStyle(.plain)
-                                        .foregroundColor(SudoTheme.text)
-                                }
-                                HStack(spacing: 8) {
-                                    Button("save") {
-                                        settings.buttonNames[action.rawValue] = editName.isEmpty ? nil : editName
-                                        let terms = editTerms.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                                        settings.buttonSearchTerms[action.rawValue] = terms.isEmpty ? nil : terms
-                                        editingAction = nil
-                                    }
-                                    .font(SudoTheme.mono(size: 9))
+                    if editingAction == action {
+                        // Edit mode
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("F\(action.fKeyNumber)")
+                                    .font(SudoTheme.mono(size: 10, weight: .bold))
                                     .foregroundColor(SudoTheme.accent)
-                                    .buttonStyle(.plain)
-
-                                    Button("reset") {
-                                        settings.buttonNames[action.rawValue] = nil
-                                        settings.buttonSearchTerms[action.rawValue] = nil
-                                        editingAction = nil
-                                    }
-                                    .font(SudoTheme.mono(size: 9))
-                                    .foregroundColor(SudoTheme.error)
-                                    .buttonStyle(.plain)
-
-                                    Button("cancel") {
-                                        editingAction = nil
-                                    }
-                                    .font(SudoTheme.mono(size: 9))
+                                    .frame(width: 26, alignment: .leading)
+                                Text("editing")
+                                    .font(SudoTheme.mono(size: 8))
                                     .foregroundColor(SudoTheme.textMuted)
-                                    .buttonStyle(.plain)
-                                }
                             }
-                        } else {
-                            Text(action.displayName)
-                                .font(SudoTheme.mono(size: 11))
-                                .foregroundColor(SudoTheme.text)
+                            HStack(spacing: 4) {
+                                Text("name")
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .frame(width: 32, alignment: .trailing)
+                                TextField("display name", text: $editName)
+                                    .font(SudoTheme.mono(size: 9))
+                                    .textFieldStyle(.plain)
+                                    .foregroundColor(SudoTheme.text)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            }
+                            HStack(spacing: 4) {
+                                Text("find")
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .frame(width: 32, alignment: .trailing)
+                                TextField("comma-separated search terms", text: $editTerms)
+                                    .font(SudoTheme.mono(size: 9))
+                                    .textFieldStyle(.plain)
+                                    .foregroundColor(SudoTheme.text)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            }
+                            HStack(spacing: 8) {
+                                Spacer()
+                                Button("save") {
+                                    settings.buttonNames[action.rawValue] = editName.isEmpty ? nil : editName
+                                    let terms = editTerms.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                                    settings.buttonSearchTerms[action.rawValue] = terms.isEmpty ? nil : terms
+                                    editingAction = nil
+                                }
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.accent)
+                                .buttonStyle(.plain)
+
+                                Button("reset") {
+                                    settings.buttonNames[action.rawValue] = nil
+                                    settings.buttonSearchTerms[action.rawValue] = nil
+                                    editingAction = nil
+                                }
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.error)
+                                .buttonStyle(.plain)
+
+                                Button("cancel") { editingAction = nil }
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.textMuted)
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(6)
+                        .overlay(Rectangle().stroke(SudoTheme.accent.opacity(0.3), lineWidth: 1))
+                    } else {
+                        // Display mode
+                        HStack {
+                            Text("F\(action.fKeyNumber)")
+                                .font(SudoTheme.mono(size: 10, weight: .bold))
+                                .foregroundColor(SudoTheme.accent)
+                                .frame(width: 26, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(action.displayName)
+                                    .font(SudoTheme.mono(size: 10))
+                                    .foregroundColor(SudoTheme.text)
+                                    .lineLimit(1)
+                                Text(settings.searchTerms(for: action).prefix(4).joined(separator: ", "))
+                                    .font(SudoTheme.mono(size: 7))
+                                    .foregroundColor(SudoTheme.surface)
+                                    .lineLimit(1)
+                            }
                             Spacer()
                             Button("edit") {
                                 editName = settings.buttonNames[action.rawValue] ?? action.defaultDisplayName
                                 editTerms = (settings.buttonSearchTerms[action.rawValue] ?? action.defaultSearchTerms).joined(separator: ", ")
                                 editingAction = action
                             }
-                            .font(SudoTheme.mono(size: 9))
+                            .font(SudoTheme.mono(size: 8))
                             .foregroundColor(SudoTheme.accent)
                             .buttonStyle(.plain)
                         }
                     }
-
-                    if editingAction != action {
-                        let terms = settings.searchTerms(for: action).prefix(3).joined(separator: ", ")
-                        Text("searches: \(terms)...")
-                            .font(SudoTheme.mono(size: 8))
-                            .foregroundColor(SudoTheme.surface)
-                            .padding(.leading, 30)
-                    }
                 }
-                .padding(.vertical, 2)
             }
         }
     }

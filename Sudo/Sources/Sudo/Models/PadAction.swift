@@ -34,8 +34,8 @@ enum PadAction: String, CaseIterable {
         switch self {
         case .approve: return "Approve / Yes"
         case .reject:  return "Reject / No"
-        case .action3: return "Action 3"
-        case .action4: return "Action 4"
+        case .action3: return "Make it better"
+        case .action4: return "Stop / Cancel"
         }
     }
 
@@ -49,18 +49,22 @@ enum PadAction: String, CaseIterable {
             return [
                 "Allow", "allow once", "allow for this chat",
                 "Yes", "Approve", "Accept", "Confirm", "Continue",
-                "Run", "Execute", "allow", "yes", "approve",
-                "Allow Once", "Allow for This Chat",
+                "Run", "Execute", "Allow Once", "Allow for This Chat",
+                "Looks good", "LGTM", "Proceed", "Go ahead",
             ]
         case .reject:
             return [
-                "Deny", "deny", "No", "Reject", "Cancel", "Decline",
-                "Don't Allow", "Block", "Stop", "no", "reject", "cancel",
+                "Deny", "No", "Reject", "Cancel", "Decline",
+                "Don't Allow", "Block", "Stop", "Start over",
             ]
         case .action3:
-            return ["Continue", "Next", "Skip", "Retry"]
+            return [
+                "Make it better", "Improve", "Refine", "Edit",
+                "Try again", "Regenerate", "Revise",
+                "Continue", "Next", "Skip", "Retry",
+            ]
         case .action4:
-            return ["Stop", "Cancel", "Close", "Dismiss"]
+            return ["Stop", "Cancel", "Close", "Dismiss", "Abort", "Escape"]
         }
     }
 
