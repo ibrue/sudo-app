@@ -362,6 +362,17 @@ struct MenuBarView: View {
                 .font(SudoTheme.mono(size: 10))
                 .foregroundColor(SudoTheme.textMuted)
 
+                Text("·")
+                    .font(SudoTheme.mono(size: 10))
+                    .foregroundColor(SudoTheme.border)
+
+                Button("Bug?") {
+                    BugReporter.shared.fileReport(engine: engine)
+                }
+                .buttonStyle(.plain)
+                .font(SudoTheme.mono(size: 10))
+                .foregroundColor(SudoTheme.textMuted)
+
                 Spacer()
 
                 Button("Quit") {
@@ -400,6 +411,7 @@ struct MenuBarView: View {
             settingToggle("sound feedback", isOn: $settings.soundEnabled)
             settingToggle("notify on failure", isOn: $settings.notifyOnFailure)
             settingToggle("launch at login", isOn: $settings.launchAtLogin)
+            settingToggle("anonymous telemetry", isOn: $settings.telemetryEnabled)
         }
     }
 

@@ -44,6 +44,10 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(webhookURL, forKey: "webhookURL") }
     }
 
+    @Published var telemetryEnabled: Bool {
+        didSet { defaults.set(telemetryEnabled, forKey: "telemetryEnabled") }
+    }
+
     /// Custom display names for each button (nil = use default)
     @Published var buttonNames: [String: String] {
         didSet { defaults.set(buttonNames, forKey: "buttonNames") }
@@ -66,6 +70,7 @@ final class SudoSettings: ObservableObject {
         self.apiEnabled = defaults.bool(forKey: "apiEnabled")
         self.apiPort = defaults.object(forKey: "apiPort") == nil ? 7483 : defaults.integer(forKey: "apiPort")
         self.apiKey = defaults.string(forKey: "apiKey") ?? Self.generateAPIKey()
+        self.telemetryEnabled = defaults.object(forKey: "telemetryEnabled") == nil ? true : defaults.bool(forKey: "telemetryEnabled")
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonNames = (defaults.dictionary(forKey: "buttonNames") as? [String: String]) ?? [:]
         if let data = defaults.data(forKey: "buttonSearchTerms"),

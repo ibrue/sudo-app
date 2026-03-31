@@ -50,6 +50,8 @@ final class SudoEngine: ObservableObject {
         }
         // Initial detection
         updateDetectedApp()
+
+        SudoTelemetry.shared.trackLaunch()
     }
 
     func stop() {
@@ -172,6 +174,9 @@ final class SudoEngine: ObservableObject {
 
             // Fire webhook
             WebhookManager.shared.fire(action: action, app: app, method: method, success: success)
+
+            // Telemetry
+            SudoTelemetry.shared.trackAction(action: action, app: app, success: success)
 
             // macOS notification on failure
             if !success && SudoSettings.shared.notifyOnFailure {
