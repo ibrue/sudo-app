@@ -45,40 +45,65 @@ struct MenuBarView: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            // Permission warnings
+            // Permission status
             if !engine.isConnected {
                 VStack(alignment: .leading, spacing: 6) {
+                    // Status checks
                     HStack(spacing: 6) {
-                        Text("!")
-                            .font(SudoTheme.mono(size: 10, weight: .bold))
-                            .foregroundColor(SudoTheme.bg)
-                            .frame(width: 16, height: 16)
-                            .background(SudoTheme.error)
-                        Text("accessibility permission required")
+                        Text(engine.axPermissionGranted ? "✓" : "✗")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(engine.axPermissionGranted ? SudoTheme.accent : SudoTheme.error)
+                        Text("accessibility api")
                             .font(SudoTheme.mono(size: 9))
-                            .foregroundColor(SudoTheme.error)
+                            .foregroundColor(SudoTheme.text)
+                        Spacer()
+                        Text(engine.axPermissionGranted ? "granted" : "denied")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(engine.axPermissionGranted ? SudoTheme.accent : SudoTheme.error)
                     }
-                    Text("System Settings → Privacy & Security → Accessibility → enable Sudo")
+                    HStack(spacing: 6) {
+                        Text(engine.isConnected ? "✓" : "✗")
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(engine.isConnected ? SudoTheme.accent : SudoTheme.error)
+                        Text("hotkey listener")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.text)
+                        Spacer()
+                        Text(engine.isConnected ? "active" : "failed")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(engine.isConnected ? SudoTheme.accent : SudoTheme.error)
+                    }
+
+                    Text(engine.permissionStatus)
                         .font(SudoTheme.mono(size: 8))
                         .foregroundColor(SudoTheme.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("After enabling, quit and reopen the app.")
-                        .font(SudoTheme.mono(size: 8))
-                        .foregroundColor(SudoTheme.textMuted)
-                    Button(action: {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                    }) {
-                        Text("[ OPEN SYSTEM SETTINGS ]")
-                            .font(SudoTheme.mono(size: 9))
-                            .foregroundColor(SudoTheme.accent)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
-                            .overlay(
-                                Rectangle()
-                                    .stroke(SudoTheme.accent, lineWidth: SudoTheme.borderWidth)
-                            )
+
+                    if !engine.axPermissionGranted {
+                        Text("system settings → privacy & security → accessibility → enable sudo")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .buttonStyle(.plain)
+
+                    HStack(spacing: 8) {
+                        Button(action: {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                        }) {
+                            Text("[ open settings ]")
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.accent)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: {
+                            engine.checkAndConnect()
+                        }) {
+                            Text("[ re-check ]")
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.accent)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.horizontal, SudoTheme.spacingMd)
                 .padding(.bottom, 8)

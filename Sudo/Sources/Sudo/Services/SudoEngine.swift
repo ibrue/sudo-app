@@ -14,6 +14,8 @@ final class SudoEngine: ObservableObject {
     @Published var detectedApp: String = "No AI app detected"
     @Published var currentBundleID: String? = nil
     @Published var isConnected: Bool = false
+    @Published var axPermissionGranted: Bool = false
+    @Published var permissionStatus: String = "checking..."
     @Published var isProcessing: Bool = false
     @Published var lastResult: ActionResult = .idle
     @Published var actionLog: [ActionLogEntry] = []
@@ -76,6 +78,7 @@ final class SudoEngine: ObservableObject {
     private let debounceDuration: TimeInterval = 0.1
     private let searchTimeout: TimeInterval = 3.0
     private var autoApproveTimer: Timer?
+    private var permissionCheckTimer: Timer?
 
     /// Trigger an action programmatically (for the test panel UI)
     func triggerAction(_ padAction: PadAction) {
@@ -85,30 +88,83 @@ final class SudoEngine: ObservableObject {
     }
 
     func start() {
-        hotkeyListener.start { [weak self] action in
-            self?.handleAction(action)
+        // Check permissions and try to start listener
+        checkAndConnect()
+
+        // Re-check permissions every 3 seconds until connected
+        permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            if !self.isConnected {
+                self.checkAndConnect()
+            }
         }
-        isConnected = hotkeyListener.isListening
 
         // Event-driven app detection via NSWorkspace notifications
         let nc = NSWorkspace.shared.notificationCenter
         nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
             self?.updateDetectedApp()
         }
-        // Initial detection
         updateDetectedApp()
 
-        // Load plugins
         PluginManager.shared.loadPlugins()
-
-        // Start auto-approve polling if enabled
         startAutoApproveTimer()
 
-        // Connect to pad for LED feedback
         PadCommunicator.shared.connect()
         PadCommunicator.shared.sendState(.idle)
 
         SudoTelemetry.shared.trackLaunch()
+    }
+
+    /// Check permissions and (re)start the hotkey listener if possible
+    func checkAndConnect() {
+        let axTrusted = AXIsProcessTrusted()
+
+        DispatchQueue.main.async {
+            self.axPermissionGranted = axTrusted
+        }
+
+        if axTrusted {
+            // Try to start the listener if not already running
+            if !hotkeyListener.isListening {
+                hotkeyListener.stop()
+                hotkeyListener.start { [weak self] action in
+                    self?.handleAction(action)
+                }
+            }
+
+            let listening = hotkeyListener.isListening
+
+            // Test AX tree access on a real app
+            let canReadAX = testAXAccess()
+
+            DispatchQueue.main.async {
+                self.isConnected = listening
+                if listening && canReadAX {
+                    self.permissionStatus = "all permissions granted"
+                    self.permissionCheckTimer?.invalidate()
+                    self.permissionCheckTimer = nil
+                } else if listening {
+                    self.permissionStatus = "hotkeys ok, ax tree limited"
+                } else {
+                    self.permissionStatus = "ax granted but event tap failed — try restarting the app"
+                }
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.isConnected = false
+                self.permissionStatus = "accessibility not granted"
+            }
+        }
+    }
+
+    /// Try to read the AX tree of the frontmost app as a real permission test
+    private func testAXAccess() -> Bool {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return false }
+        let pid = frontApp.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
+        var value: AnyObject?
+        let result = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
+        return result == .success
     }
 
     func stop() {
@@ -116,6 +172,8 @@ final class SudoEngine: ObservableObject {
         isConnected = false
         autoApproveTimer?.invalidate()
         autoApproveTimer = nil
+        permissionCheckTimer?.invalidate()
+        permissionCheckTimer = nil
         PadCommunicator.shared.disconnect()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
