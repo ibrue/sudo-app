@@ -19,7 +19,7 @@ final class AXButtonFinder {
         AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
 
         var orderedWindows = windows
-        if let focused = focusedWindow as! AXUIElement? {
+        if let focused = focusedWindow as? AXUIElement {
             orderedWindows.insert(focused, at: 0)
         }
 

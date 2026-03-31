@@ -8,10 +8,10 @@ final class SudoEngine: ObservableObject {
         case idle, processing, success, failure
     }
 
-    @Published var lastAction: String = "Waiting for input..."
+    @Published var lastAction: String = "waiting for input..."
     @Published var lastMethod: String = ""
     @Published var lastContext: String = ""
-    @Published var detectedApp: String = "No AI app detected"
+    @Published var detectedApp: String = "none"
     @Published var currentBundleID: String? = nil
     @Published var isConnected: Bool = false
     @Published var axPermissionGranted: Bool = false
@@ -79,6 +79,7 @@ final class SudoEngine: ObservableObject {
     private let searchTimeout: TimeInterval = 3.0
     private var autoApproveTimer: Timer?
     private var permissionCheckTimer: Timer?
+    private var executingMacro = false
 
     /// Trigger an action programmatically (for the test panel UI)
     func triggerAction(_ padAction: PadAction) {
@@ -124,29 +125,21 @@ final class SudoEngine: ObservableObject {
         }
 
         if axTrusted {
-            // Try to start the listener if not already running
             if !hotkeyListener.isListening {
                 hotkeyListener.stop()
                 hotkeyListener.start { [weak self] action in
                     self?.handleAction(action)
                 }
             }
-
             let listening = hotkeyListener.isListening
-
-            // Test AX tree access on a real app
-            let canReadAX = testAXAccess()
-
             DispatchQueue.main.async {
                 self.isConnected = listening
-                if listening && canReadAX {
+                if listening {
                     self.permissionStatus = "all permissions granted"
                     self.permissionCheckTimer?.invalidate()
                     self.permissionCheckTimer = nil
-                } else if listening {
-                    self.permissionStatus = "hotkeys ok, ax tree limited"
                 } else {
-                    self.permissionStatus = "ax granted but event tap failed — try restarting the app"
+                    self.permissionStatus = "accessibility granted but event tap failed — try restarting"
                 }
             }
         } else {
@@ -155,16 +148,6 @@ final class SudoEngine: ObservableObject {
                 self.permissionStatus = "accessibility not granted"
             }
         }
-    }
-
-    /// Try to read the AX tree of the frontmost app as a real permission test
-    private func testAXAccess() -> Bool {
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return false }
-        let pid = frontApp.processIdentifier
-        let appElement = AXUIElementCreateApplication(pid)
-        var value: AnyObject?
-        let result = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
-        return result == .success
     }
 
     func stop() {
@@ -224,12 +207,12 @@ final class SudoEngine: ObservableObject {
             case .success(let detail):
                 self.finishAction(action: action, success: true, app: app.name,
                                   method: "\(methodPrefix)AX Tree → \(detail)",
-                                  statusText: "[auto] \(action.displayName)", context: context)
+                                  statusText: "[auto] \(action.displayName.lowercased())", context: context)
                 DispatchQueue.main.async { self.autoApproveCount += 1 }
             case .failure(let reason):
                 self.finishAction(action: action, success: false, app: app.name,
                                   method: "\(methodPrefix)AX Tree: \(reason)",
-                                  statusText: "[auto] \(action.displayName) — failed", context: context)
+                                  statusText: "[auto] \(action.displayName.lowercased()) — failed", context: context)
             }
         }
     }
@@ -268,19 +251,21 @@ final class SudoEngine: ObservableObject {
     }
 
     private func handleAction(_ action: PadAction) {
-        // Check if this button has a macro assigned
-        if let macro = SudoSettings.shared.macros.first(where: { $0.assignedButton == action.rawValue }) {
-            executeMacro(macro)
-            return
-        }
-
         // Debounce: ignore rapid double-presses
         let now = Date()
         guard now.timeIntervalSince(lastActionTime) >= debounceDuration else {
-            print("[sudo] Debounced: \(action.displayName) (too fast)")
+            print("[sudo] debounced: \(action.displayName.lowercased()) (too fast)")
             return
         }
         lastActionTime = now
+
+        // Check if this button has a macro assigned
+        if !executingMacro, let macro = SudoSettings.shared.macros.first(where: { $0.assignedButton == action.rawValue }) {
+            executingMacro = true
+            executeMacro(macro)
+            executingMacro = false
+            return
+        }
 
         // Check action mode — simple modes skip the AI search pipeline entirely
         let mode = SudoSettings.shared.actionMode(for: action)
@@ -289,16 +274,16 @@ final class SudoEngine: ObservableObject {
         if mode == .keyCombo, let kc = SudoSettings.shared.keyCombo(for: action) {
             sendKeyComboDirect(keyCode: kc.keyCode, modifiers: kc.modifiers)
             finishAction(action: action, success: true, app: frontAppName,
-                         method: "keyCombo → \(action.displayName)",
-                         statusText: action.displayName)
+                         method: "keyCombo → \(action.displayName.lowercased())",
+                         statusText: action.displayName.lowercased())
             return
         }
 
         if mode == .mediaKey, let kc = SudoSettings.shared.keyCombo(for: action) {
             sendMediaKey(keyType: Int32(kc.keyCode))
             finishAction(action: action, success: true, app: frontAppName,
-                         method: "mediaKey → \(action.displayName)",
-                         statusText: action.displayName)
+                         method: "mediaKey → \(action.displayName.lowercased())",
+                         statusText: action.displayName.lowercased())
             return
         }
 
@@ -307,7 +292,7 @@ final class SudoEngine: ObservableObject {
         DispatchQueue.main.async {
             self.isProcessing = true
             self.lastResult = .processing
-            self.lastAction = "Searching: \(action.displayName)..."
+            self.lastAction = "searching: \(action.displayName.lowercased())..."
             self.lastMethod = ""
         }
 
@@ -330,7 +315,7 @@ final class SudoEngine: ObservableObject {
             appsToSearch = [detected]
         } else {
             finishAction(action: action, success: false, app: "none", method: "",
-                         statusText: "\(action.displayName) — no app in focus")
+                         statusText: "\(action.displayName.lowercased()) — no app in focus")
             return
         }
 
@@ -369,7 +354,7 @@ final class SudoEngine: ObservableObject {
                     sendKeypress(keyCode: keyCode, to: app.pid)
                     finishAction(action: action, success: true, app: app.name,
                                  method: "Keyboard → keyCode \(keyCode)",
-                                 statusText: action.displayName, context: context)
+                                 statusText: action.displayName.lowercased(), context: context)
                     return
                 }
             }
@@ -386,11 +371,11 @@ final class SudoEngine: ObservableObject {
         switch execResult {
         case .success(let detail):
             finishAction(action: action, success: true, app: app,
-                         method: "\(method) → \(detail)", statusText: action.displayName, context: context)
+                         method: "\(method) → \(detail)", statusText: action.displayName.lowercased(), context: context)
         case .failure(let reason):
             finishAction(action: action, success: false, app: app,
                          method: "\(method): \(reason)",
-                         statusText: "\(action.displayName) — failed", context: context)
+                         statusText: "\(action.displayName.lowercased()) — failed", context: context)
         }
     }
 

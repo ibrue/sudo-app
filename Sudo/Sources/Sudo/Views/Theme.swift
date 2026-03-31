@@ -31,3 +31,12 @@ enum SudoTheme {
     static let spacingXl: CGFloat = 32
     static let spacingXxl: CGFloat = 48
 }
+
+extension Color {
+    init(hex: UInt32) {
+        let r = Double((hex >> 16) & 0xFF) / 255.0
+        let g = Double((hex >> 8) & 0xFF) / 255.0
+        let b = Double(hex & 0xFF) / 255.0
+        self.init(red: r, green: g, blue: b)
+    }
+}
