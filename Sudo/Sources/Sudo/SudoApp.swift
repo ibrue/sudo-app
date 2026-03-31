@@ -16,7 +16,7 @@ struct SudoApp: App {
     private var menuBarLabel: String {
         switch engine.lastResult {
         case .success:
-            return "[ ok ]"
+            return "[okay]"
         case .failure:
             return "[fail]"
         case .processing:
