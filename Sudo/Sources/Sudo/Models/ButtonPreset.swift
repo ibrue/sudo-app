@@ -199,6 +199,7 @@ struct ButtonPreset: Identifiable {
 
     /// Apply this preset to SudoSettings
     func apply() {
+        SudoTelemetry.shared.trackPresetApplied(preset: id)
         let settings = SudoSettings.shared
         for action in PadAction.allCases {
             if let config = buttons[action] {

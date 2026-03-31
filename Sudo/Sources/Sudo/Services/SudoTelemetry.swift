@@ -1,7 +1,7 @@
 import Foundation
 
 /// Anonymous, fire-and-forget telemetry.
-/// Sends minimal usage events to help improve the app.
+/// Tracks generic button presses (button 1-4), not specific action types.
 /// No usernames, hostnames, or IP tracking — only a random device UUID.
 final class SudoTelemetry {
     static let shared = SudoTelemetry()
@@ -25,24 +25,34 @@ final class SudoTelemetry {
         }
     }
 
-    /// Track an action button press.
-    func trackAction(action: PadAction, app: String, success: Bool) {
+    /// Track a button press (generic — button number, not action type)
+    func trackButtonPress(button: PadAction, mode: String) {
         guard SudoSettings.shared.telemetryEnabled else { return }
         send(payload: [
-            "event": "action",
-            "action": action.rawValue,
-            "app": app,
-            "success": success,
+            "event": "button_press",
+            "button": button.buttonNumber,
+            "mode": mode,
             "version": OTAUpdater.currentVersion,
             "device_id": deviceID
         ] as [String: Any])
     }
 
-    /// Track app launch.
+    /// Track app launch
     func trackLaunch() {
         guard SudoSettings.shared.telemetryEnabled else { return }
         send(payload: [
             "event": "launch",
+            "version": OTAUpdater.currentVersion,
+            "device_id": deviceID
+        ])
+    }
+
+    /// Track which preset was applied
+    func trackPresetApplied(preset: String) {
+        guard SudoSettings.shared.telemetryEnabled else { return }
+        send(payload: [
+            "event": "preset_applied",
+            "preset": preset,
             "version": OTAUpdater.currentVersion,
             "device_id": deviceID
         ])
@@ -56,7 +66,6 @@ final class SudoTelemetry {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        // Fire-and-forget
         session.dataTask(with: request).resume()
     }
 }

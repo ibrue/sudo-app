@@ -2,6 +2,19 @@
 
 Menu bar daemon for the [sudo macro pad](https://sudo.supply). Translates physical button presses into AI agent actions.
 
+## Button Layout
+
+Physical device, bottom to top:
+
+| # | Color | Hotkey | Default Action |
+|---|-------|--------|----------------|
+| 1 (bottom) | Green | `Ctrl+Shift+F13` | Approve / Yes |
+| 2 | Yellow | `Ctrl+Shift+F15` | Make it better |
+| 3 | Red | `Ctrl+Shift+F14` | Reject / No |
+| 4 (top) | Black | `Ctrl+Shift+F16` | YOLO (allow all) |
+
+All buttons are fully remappable with custom search terms, keyboard shortcuts, or macro sequences.
+
 ## Install
 
 **Quick install (from source):**
@@ -23,10 +36,10 @@ cd sudo-app
 
 1. **Listen** — Intercepts `Ctrl+Shift+F13–F16` from the RP2040 macro pad
 2. **Detect** — Identifies frontmost AI app via bundle ID or browser tab
-3. **Find** — Locates approve/reject buttons via AX accessibility tree (primary) + Vision OCR (fallback)
+3. **Find** — Locates buttons via 3-strategy pipeline: AX accessibility tree → Vision OCR → keyboard fallback
 4. **Act** — Presses button via `AXUIElement.performAction` — no synthetic input, anti-cheat safe
 
-## Supported apps
+## Supported Apps
 
 | Category | Apps |
 |----------|------|
@@ -38,14 +51,76 @@ cd sudo-app
 
 Editors and terminals are detected as AI apps when running agents like Claude Code, Cline, or GitHub Copilot.
 
-## Button mapping
+## Quick Presets
 
-| Button | Hotkey | Action |
-|--------|--------|--------|
-| 1 | `Ctrl+Shift+F13` | Approve / Yes |
-| 2 | `Ctrl+Shift+F14` | Reject / No |
-| 3 | `Ctrl+Shift+F15` | Action 3 |
-| 4 | `Ctrl+Shift+F16` | Action 4 |
+| Preset | Description |
+|--------|-------------|
+| AI Agent | Approve / reject / make it better / YOLO for AI permission prompts |
+| Plan Mode | Plan-oriented actions for AI coding agents |
+| Claude Code | Optimized for Claude Code terminal workflows |
+| System Shortcuts | Screenshot, copy, paste, undo, save, lock screen |
+| Media Controls | Play/pause, next, previous, volume |
+| Web Browsing | Tab navigation, back, forward, refresh |
+| Discord Soundboard | Trigger soundboard clips |
+
+## Features
+
+### Menu Bar Daemon
+- `[sudo]` label with animated loading `[····]`, success `[okay]`, failure `[fail]`
+- Launch at login via SMAppService
+- Sound feedback (configurable)
+- Bug reporting from menu bar
+
+### AI Detection & Button Finding
+- 3-strategy pipeline: AX accessibility tree → Vision OCR → keyboard fallback
+- Per-app profiles with auto-switching
+- Button remapping with custom search terms
+- Context preview (shows what the AI wants to do)
+- Debounce at 100ms (spammable)
+
+### Action Modes
+- AI search (default) — find and press buttons in AI apps
+- Keyboard shortcuts — send arbitrary key combos
+- Media keys — play/pause, next, previous, volume
+- Macro sequences — chain multiple actions with configurable delays
+
+### Automation
+- Auto-approve rules engine with safety exclusions
+- Action history log (last 50 actions)
+- Auto-retry permission checker (re-checks every 3s, no restart needed)
+
+### Developer API
+Local HTTP API on port 7483:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/status` | GET | App status and current configuration |
+| `/press/:button` | POST | Simulate a button press (1–4) |
+| `/config` | GET | Current button mappings |
+| `/config` | PUT | Update button mappings |
+| `/webhooks` | POST | Register a webhook URL |
+| `/webhooks` | DELETE | Remove a webhook |
+| `/history` | GET | Last 50 actions |
+
+Webhooks notify on every button press with JSON payload.
+
+### MCP Server Mode
+POST `/mcp/request-approval` blocks until a physical button is pressed. Integrates with any MCP-compatible AI agent to gate tool use behind hardware approval.
+
+### Plugin System
+Drop `.json` plugin files in `~/Library/Application Support/Sudo/Plugins/` to extend functionality. Plugins can define custom button actions, search terms, and automation rules.
+
+### Hardware Integration
+- Visual device layout in settings matching physical button colors (green, yellow, red, black)
+- LED feedback protocol for RP2040 USB serial
+
+### Gamification & Telemetry
+- Usage streaks (approves/rejects/day streak)
+- Anonymous telemetry (opt-in) with public analytics dashboard
+- OTA updates from GitHub Releases
+
+### Developer Workflow
+- Pull & Rebuild button + embedded terminal for dev workflow
 
 ## Testing without hardware
 

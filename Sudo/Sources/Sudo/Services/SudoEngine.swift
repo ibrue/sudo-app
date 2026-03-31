@@ -416,8 +416,9 @@ final class SudoEngine: ObservableObject {
             // Fire webhook
             WebhookManager.shared.fire(action: action, app: app, method: method, success: success)
 
-            // Telemetry
-            SudoTelemetry.shared.trackAction(action: action, app: app, success: success)
+            // Telemetry (generic button press, not action-specific)
+            let mode = SudoSettings.shared.actionMode(for: action).rawValue
+            SudoTelemetry.shared.trackButtonPress(button: action, mode: mode)
 
             // macOS notification on failure
             if !success && SudoSettings.shared.notifyOnFailure {
