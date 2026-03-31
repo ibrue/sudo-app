@@ -48,6 +48,16 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(telemetryEnabled, forKey: "telemetryEnabled") }
     }
 
+    /// Action mode per button (aiSearch, keyCombo, mediaKey)
+    @Published var buttonModes: [String: String] {
+        didSet { defaults.set(buttonModes, forKey: "buttonModes") }
+    }
+
+    /// Key combos per button (keyCode + modifiers)
+    @Published var buttonKeyCombos: [String: [String: Int]] {
+        didSet { defaults.set(buttonKeyCombos, forKey: "buttonKeyCombos") }
+    }
+
     /// Custom display names for each button (nil = use default)
     @Published var buttonNames: [String: String] {
         didSet { defaults.set(buttonNames, forKey: "buttonNames") }
@@ -142,6 +152,8 @@ final class SudoSettings: ObservableObject {
         self.apiKey = defaults.string(forKey: "apiKey") ?? Self.generateAPIKey()
         self.telemetryEnabled = defaults.object(forKey: "telemetryEnabled") == nil ? true : defaults.bool(forKey: "telemetryEnabled")
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
+        self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
+        self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]
         self.buttonNames = (defaults.dictionary(forKey: "buttonNames") as? [String: String]) ?? [:]
         if let data = defaults.data(forKey: "buttonSearchTerms"),
            let terms = try? JSONDecoder().decode([String: [String]].self, from: data) {
@@ -198,6 +210,20 @@ final class SudoSettings: ObservableObject {
                 MacroStep(action: .approve, delayAfter: 0),
             ]),
         ]
+    }
+
+    func actionMode(for action: PadAction) -> ActionMode {
+        if let raw = buttonModes[action.rawValue], let mode = ActionMode(rawValue: raw) {
+            return mode
+        }
+        return .aiSearch
+    }
+
+    func keyCombo(for action: PadAction) -> ButtonPreset.KeyCombo? {
+        guard let data = buttonKeyCombos[action.rawValue],
+              let keyCode = data["keyCode"],
+              let modifiers = data["modifiers"] else { return nil }
+        return ButtonPreset.KeyCombo(keyCode: UInt16(keyCode), modifiers: CGEventFlags(rawValue: UInt64(modifiers)))
     }
 
     func displayName(for action: PadAction) -> String {

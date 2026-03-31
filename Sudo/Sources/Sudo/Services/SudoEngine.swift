@@ -73,7 +73,7 @@ final class SudoEngine: ObservableObject {
     private let executor = ActionExecutor()
     private let hotkeyListener = HotkeyListener()
     private var lastActionTime: Date = .distantPast
-    private let debounceDuration: TimeInterval = 0.5
+    private let debounceDuration: TimeInterval = 0.1
     private let searchTimeout: TimeInterval = 3.0
     private var autoApproveTimer: Timer?
 
@@ -220,6 +220,25 @@ final class SudoEngine: ObservableObject {
             return
         }
         lastActionTime = now
+
+        // Check action mode — simple modes skip the AI search pipeline entirely
+        let mode = SudoSettings.shared.actionMode(for: action)
+
+        if mode == .keyCombo, let kc = SudoSettings.shared.keyCombo(for: action) {
+            sendKeyComboDirect(keyCode: kc.keyCode, modifiers: kc.modifiers)
+            finishAction(action: action, success: true, app: "system",
+                         method: "keyCombo → \(action.displayName)",
+                         statusText: action.displayName)
+            return
+        }
+
+        if mode == .mediaKey, let kc = SudoSettings.shared.keyCombo(for: action) {
+            sendMediaKey(keyType: Int32(kc.keyCode))
+            finishAction(action: action, success: true, app: "system",
+                         method: "mediaKey → \(action.displayName)",
+                         statusText: action.displayName)
+            return
+        }
 
         PadCommunicator.shared.sendState(.processing)
 
@@ -389,6 +408,36 @@ final class SudoEngine: ObservableObject {
         keyUp?.post(tap: .cghidEventTap)
 
         print("[sudo] Sent keyCode \(keyCode) to PID \(pid)")
+    }
+
+    /// Send a keyboard shortcut (e.g., Cmd+C, Cmd+V) to the frontmost app
+    private func sendKeyComboDirect(keyCode: UInt16, modifiers: CGEventFlags) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        keyDown?.flags = modifiers
+        keyUp?.flags = modifiers
+        keyDown?.post(tap: .cghidEventTap)
+        usleep(50_000)
+        keyUp?.post(tap: .cghidEventTap)
+        print("[sudo] Sent keyCombo: keyCode=\(keyCode) modifiers=\(modifiers.rawValue)")
+    }
+
+    /// Send a media key event (play/pause, next, previous, mute)
+    private func sendMediaKey(keyType: Int32) {
+        func doMediaKey(down: Bool) {
+            let flags: Int32 = down ? 0xa00 : 0xb00
+            let data1 = Int32((keyType << 16) | flags)
+            let event = NSEvent.otherEvent(
+                with: .systemDefined, location: .zero, modifierFlags: [],
+                timestamp: 0, windowNumber: 0, context: nil,
+                subtype: 8, data1: Int(data1), data2: -1
+            )
+            event?.cgEvent?.post(tap: .cghidEventTap)
+        }
+        doMediaKey(down: true)
+        doMediaKey(down: false)
+        print("[sudo] Sent mediaKey: type=\(keyType)")
     }
 
     private func sendFailureNotification(action: PadAction, app: String) {
