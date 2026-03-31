@@ -79,6 +79,15 @@ cat > "$CONTENTS/Info.plist" << PLIST
 PLIST
 
 echo ""
+echo "[sudo] Code signing..."
+codesign --force --deep --sign - "$APP_DIR"
+echo "[sudo] Signed (ad-hoc)"
+
+# Reset accessibility TCC entry so macOS re-trusts the new binary
+tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null || true
+echo "[sudo] Reset accessibility trust (toggle sudo in settings to re-grant)"
+
+echo ""
 echo "[sudo] Build successful: $APP_DIR"
-echo "[sudo] To install: cp -r '$APP_DIR' /Applications/"
+echo "[sudo] To install: rm -rf /Applications/Sudo.app && cp -r '$APP_DIR' /Applications/"
 echo "[sudo] To create DMG: ./create-dmg.sh"

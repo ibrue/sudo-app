@@ -70,7 +70,7 @@ final class DevRebuilder: ObservableObject {
             let steps: [(String, String)] = [
                 ("pulling...", "git fetch origin main && git reset --hard origin/main"),
                 ("building...", "cd \(repoPath) && rm -rf Sudo/.build && ./build.sh"),
-                ("installing...", "rm -rf /Applications/Sudo.app && cp -r \(repoPath)/dist/Sudo.app /Applications/Sudo.app"),
+                ("installing...", "rm -rf /Applications/Sudo.app && cp -r \(repoPath)/dist/Sudo.app /Applications/Sudo.app && codesign --force --deep --sign - /Applications/Sudo.app && tccutil reset Accessibility supply.sudo.app 2>/dev/null || true"),
             ]
 
             for (label, command) in steps {
