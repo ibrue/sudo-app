@@ -425,34 +425,6 @@ struct MenuBarView: View {
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
-            // Developer API
-            divider
-            VStack(alignment: .leading, spacing: 6) {
-                Button(action: { showAPI.toggle() }) {
-                    HStack {
-                        Text("> developer api")
-                            .font(SudoTheme.mono(size: 10))
-                            .foregroundColor(SudoTheme.textMuted)
-                        if apiServer.isRunning {
-                            Text("ON")
-                                .font(SudoTheme.mono(size: 8))
-                                .foregroundColor(SudoTheme.accent)
-                        }
-                        Spacer()
-                        Text(showAPI ? "▾" : "▸")
-                            .font(SudoTheme.mono(size: 10))
-                            .foregroundColor(SudoTheme.textMuted)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if showAPI {
-                    apiPanel
-                }
-            }
-            .padding(.horizontal, SudoTheme.spacingMd)
-            .padding(.vertical, 10)
-
             // Terminal / build log
             divider
             VStack(alignment: .leading, spacing: 6) {
@@ -531,8 +503,15 @@ struct MenuBarView: View {
                     .background(Color(hex: 0x050505))
                     .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
 
-                    // Action buttons
                     HStack(spacing: 8) {
+                        Button("copy log") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(rebuilder.buildLog.joined(separator: "\n"), forType: .string)
+                        }
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.accent)
+                        .buttonStyle(.plain)
+
                         Button("clear") { rebuilder.clearLog() }
                             .font(SudoTheme.mono(size: 8))
                             .foregroundColor(SudoTheme.textMuted)
@@ -720,6 +699,31 @@ struct MenuBarView: View {
             .font(SudoTheme.mono(size: 8))
             .foregroundColor(SudoTheme.textMuted)
             .buttonStyle(.plain)
+
+            divider
+
+            // Developer API (inline in settings)
+            Button(action: { showAPI.toggle() }) {
+                HStack {
+                    Text("developer api")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    if apiServer.isRunning {
+                        Text("on")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.accent)
+                    }
+                    Spacer()
+                    Text(showAPI ? "▾" : "▸")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if showAPI {
+                apiPanel
+            }
         }
     }
 
