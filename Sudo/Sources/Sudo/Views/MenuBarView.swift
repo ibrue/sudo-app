@@ -83,6 +83,10 @@ struct MenuBarView: View {
                             .font(SudoTheme.mono(size: 8))
                             .foregroundColor(SudoTheme.textMuted)
                             .fixedSize(horizontal: false, vertical: true)
+                        Text("if sudo is toggled on but still shows denied,\ntoggle it off then on again (rebuilds reset trust)")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     HStack(spacing: 8) {
