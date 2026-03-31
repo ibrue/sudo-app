@@ -1062,6 +1062,154 @@ struct MenuBarView: View {
     @ViewBuilder
     private var remapPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Visual device layout — matches physical button colors (top to bottom)
+            VStack(spacing: 4) {
+                Text("[sudo]")
+                    .font(SudoTheme.mono(size: 8, weight: .bold))
+                    .foregroundColor(SudoTheme.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                    .background(SudoTheme.bg)
+                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+
+                // Buttons in physical order: top (black) to bottom (green)
+                ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
+                    Button(action: {
+                        if editingAction == action {
+                            editingAction = nil
+                        } else {
+                            editName = settings.buttonNames[action.rawValue] ?? action.defaultDisplayName
+                            editTerms = (settings.buttonSearchTerms[action.rawValue] ?? action.defaultSearchTerms).joined(separator: ", ")
+                            editingAction = action
+                        }
+                    }) {
+                        HStack {
+                            Text("F\(action.fKeyNumber)")
+                                .font(SudoTheme.mono(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 24)
+                            Text(action.displayName.lowercased())
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            Spacer()
+                            if editingAction == action {
+                                Text("editing")
+                                    .font(SudoTheme.mono(size: 7))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color(hex: action.buttonColorHex))
+                        .overlay(
+                            Rectangle()
+                                .stroke(editingAction == action ? Color.white : Color(hex: action.buttonColorHex).opacity(0.5), lineWidth: editingAction == action ? 2 : 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(6)
+            .background(Color(hex: 0x1A1A1A))
+            .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+
+            // Edit panel for selected button
+            if let action = editingAction {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text("name")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                            .frame(width: 32, alignment: .trailing)
+                        TextField("display name", text: $editName)
+                            .font(SudoTheme.mono(size: 9))
+                            .textFieldStyle(.plain)
+                            .foregroundColor(SudoTheme.text)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                    }
+                    HStack(spacing: 4) {
+                        Text("find")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                            .frame(width: 32, alignment: .trailing)
+                        TextField("comma-separated search terms", text: $editTerms)
+                            .font(SudoTheme.mono(size: 9))
+                            .textFieldStyle(.plain)
+                            .foregroundColor(SudoTheme.text)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                    }
+                    HStack(spacing: 8) {
+                        Spacer()
+                        Button("save") {
+                            settings.buttonNames[action.rawValue] = editName.isEmpty ? nil : editName
+                            let terms = editTerms.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                            settings.buttonSearchTerms[action.rawValue] = terms.isEmpty ? nil : terms
+                            editingAction = nil
+                        }
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                        .buttonStyle(.plain)
+
+                        Button("reset") {
+                            settings.buttonNames[action.rawValue] = nil
+                            settings.buttonSearchTerms[action.rawValue] = nil
+                            editingAction = nil
+                        }
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.error)
+                        .buttonStyle(.plain)
+
+                        Button("cancel") { editingAction = nil }
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(6)
+                .overlay(Rectangle().stroke(SudoTheme.accent.opacity(0.3), lineWidth: 1))
+            }
+
+            divider
+
+            // Quick presets — vertical list
+            Text("quick presets:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+
+            VStack(spacing: 4) {
+                ForEach(ButtonPreset.all) { preset in
+                    Button(action: {
+                        preset.apply()
+                        editingAction = nil
+                    }) {
+                        HStack {
+                            Text(preset.name.lowercased())
+                                .font(SudoTheme.mono(size: 9, weight: .bold))
+                                .foregroundColor(SudoTheme.accent)
+                            Spacer()
+                            Text(preset.description)
+                                .font(SudoTheme.mono(size: 7))
+                                .foregroundColor(SudoTheme.textMuted)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .overlay(
+                            Rectangle()
+                                .stroke(SudoTheme.border, lineWidth: SudoTheme.borderWidth)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            divider
+
             // Per-app profiles
             Button(action: { showAppProfiles.toggle() }) {
                 HStack {
@@ -1078,7 +1226,6 @@ struct MenuBarView: View {
 
             if showAppProfiles {
                 VStack(alignment: .leading, spacing: 6) {
-                    // Current app with save button
                     HStack {
                         Text("current app:")
                             .font(SudoTheme.mono(size: 8))
@@ -1089,12 +1236,12 @@ struct MenuBarView: View {
                             .lineLimit(1)
                         Spacer()
                         if let bid = engine.currentBundleID {
-                            Button("save profile for this app") {
+                            Button("save profile") {
                                 var buttons: [PadAction: ButtonPreset.ButtonConfig] = [:]
-                                for action in PadAction.allCases {
-                                    buttons[action] = ButtonPreset.ButtonConfig(
-                                        displayName: settings.displayName(for: action),
-                                        searchTerms: settings.searchTerms(for: action)
+                                for a in PadAction.allCases {
+                                    buttons[a] = ButtonPreset.ButtonConfig(
+                                        displayName: settings.displayName(for: a),
+                                        searchTerms: settings.searchTerms(for: a)
                                     )
                                 }
                                 let preset = ButtonPreset(id: bid, name: bid, description: "", buttons: buttons)
@@ -1106,7 +1253,6 @@ struct MenuBarView: View {
                         }
                     }
 
-                    // List of saved profiles
                     if !settings.appProfiles.isEmpty {
                         ForEach(Array(settings.appProfiles.keys.sorted()), id: \.self) { bundleID in
                             HStack {
@@ -1114,10 +1260,6 @@ struct MenuBarView: View {
                                 Text(shortName.lowercased())
                                     .font(SudoTheme.mono(size: 8))
                                     .foregroundColor(SudoTheme.text)
-                                Text(bundleID)
-                                    .font(SudoTheme.mono(size: 7))
-                                    .foregroundColor(SudoTheme.surface)
-                                    .lineLimit(1)
                                 Spacer()
                                 if engine.currentBundleID == bundleID {
                                     Text("active")
@@ -1140,148 +1282,6 @@ struct MenuBarView: View {
                 }
                 .padding(6)
                 .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
-            }
-
-            divider
-
-            // Quick presets
-            Text("quick presets:")
-                .font(SudoTheme.mono(size: 9))
-                .foregroundColor(SudoTheme.textMuted)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(ButtonPreset.all) { preset in
-                        Button(action: {
-                            preset.apply()
-                            editingAction = nil
-                        }) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(preset.name)
-                                    .font(SudoTheme.mono(size: 9, weight: .bold))
-                                    .foregroundColor(SudoTheme.accent)
-                                Text(preset.description)
-                                    .font(SudoTheme.mono(size: 7))
-                                    .foregroundColor(SudoTheme.textMuted)
-                                    .lineLimit(1)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .overlay(
-                                Rectangle()
-                                    .stroke(SudoTheme.border, lineWidth: SudoTheme.borderWidth)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            divider
-
-            // Per-button editing
-            Text("custom mapping:")
-                .font(SudoTheme.mono(size: 9))
-                .foregroundColor(SudoTheme.textMuted)
-
-            ForEach(PadAction.allCases, id: \.rawValue) { action in
-                VStack(alignment: .leading, spacing: 4) {
-                    if editingAction == action {
-                        // Edit mode
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("F\(action.fKeyNumber)")
-                                    .font(SudoTheme.mono(size: 10, weight: .bold))
-                                    .foregroundColor(SudoTheme.accent)
-                                    .frame(width: 26, alignment: .leading)
-                                Text("editing")
-                                    .font(SudoTheme.mono(size: 8))
-                                    .foregroundColor(SudoTheme.textMuted)
-                            }
-                            HStack(spacing: 4) {
-                                Text("name")
-                                    .font(SudoTheme.mono(size: 8))
-                                    .foregroundColor(SudoTheme.textMuted)
-                                    .frame(width: 32, alignment: .trailing)
-                                TextField("display name", text: $editName)
-                                    .font(SudoTheme.mono(size: 9))
-                                    .textFieldStyle(.plain)
-                                    .foregroundColor(SudoTheme.text)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
-                            }
-                            HStack(spacing: 4) {
-                                Text("find")
-                                    .font(SudoTheme.mono(size: 8))
-                                    .foregroundColor(SudoTheme.textMuted)
-                                    .frame(width: 32, alignment: .trailing)
-                                TextField("comma-separated search terms", text: $editTerms)
-                                    .font(SudoTheme.mono(size: 9))
-                                    .textFieldStyle(.plain)
-                                    .foregroundColor(SudoTheme.text)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
-                            }
-                            HStack(spacing: 8) {
-                                Spacer()
-                                Button("save") {
-                                    settings.buttonNames[action.rawValue] = editName.isEmpty ? nil : editName
-                                    let terms = editTerms.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                                    settings.buttonSearchTerms[action.rawValue] = terms.isEmpty ? nil : terms
-                                    editingAction = nil
-                                }
-                                .font(SudoTheme.mono(size: 9))
-                                .foregroundColor(SudoTheme.accent)
-                                .buttonStyle(.plain)
-
-                                Button("reset") {
-                                    settings.buttonNames[action.rawValue] = nil
-                                    settings.buttonSearchTerms[action.rawValue] = nil
-                                    editingAction = nil
-                                }
-                                .font(SudoTheme.mono(size: 9))
-                                .foregroundColor(SudoTheme.error)
-                                .buttonStyle(.plain)
-
-                                Button("cancel") { editingAction = nil }
-                                .font(SudoTheme.mono(size: 9))
-                                .foregroundColor(SudoTheme.textMuted)
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(6)
-                        .overlay(Rectangle().stroke(SudoTheme.accent.opacity(0.3), lineWidth: 1))
-                    } else {
-                        // Display mode
-                        HStack {
-                            Text("F\(action.fKeyNumber)")
-                                .font(SudoTheme.mono(size: 10, weight: .bold))
-                                .foregroundColor(SudoTheme.accent)
-                                .frame(width: 26, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(action.displayName)
-                                    .font(SudoTheme.mono(size: 10))
-                                    .foregroundColor(SudoTheme.text)
-                                    .lineLimit(1)
-                                Text(settings.searchTerms(for: action).prefix(4).joined(separator: ", "))
-                                    .font(SudoTheme.mono(size: 7))
-                                    .foregroundColor(SudoTheme.surface)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            Button("edit") {
-                                editName = settings.buttonNames[action.rawValue] ?? action.defaultDisplayName
-                                editTerms = (settings.buttonSearchTerms[action.rawValue] ?? action.defaultSearchTerms).joined(separator: ", ")
-                                editingAction = action
-                            }
-                            .font(SudoTheme.mono(size: 8))
-                            .foregroundColor(SudoTheme.accent)
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
             }
         }
     }

@@ -35,7 +35,7 @@ enum PadAction: String, CaseIterable {
         case .approve: return "Approve / Yes"
         case .reject:  return "Reject / No"
         case .action3: return "Make it better"
-        case .action4: return "Stop / Cancel"
+        case .action4: return "YOLO (allow all)"
         }
     }
 
@@ -72,8 +72,37 @@ enum PadAction: String, CaseIterable {
                 "Continue", "Next", "Skip", "Retry",
             ]
         case .action4:
-            return ["Stop", "Cancel", "Close", "Dismiss", "Abort", "Escape"]
+            return [
+                "Allow all", "Yes to all", "Accept all",
+                "Allow for This Chat", "allow for this chat",
+                "Stop", "Cancel", "Close", "Dismiss", "Abort", "Escape",
+            ]
         }
+    }
+
+    /// Physical button color on the sudo pad (bottom to top: green, red, yellow, black)
+    var buttonColorHex: UInt32 {
+        switch self {
+        case .approve: return 0x6ABF73  // green
+        case .reject:  return 0xC85C5C  // red
+        case .action3: return 0xD4B85C  // yellow
+        case .action4: return 0x2A2A2A  // black/dark
+        }
+    }
+
+    /// Physical order on the pad (0 = bottom, 3 = top)
+    var physicalPosition: Int {
+        switch self {
+        case .approve: return 0  // bottom (green)
+        case .reject:  return 2  // second from top (red)
+        case .action3: return 1  // second from bottom (yellow)
+        case .action4: return 3  // top (black)
+        }
+    }
+
+    /// Sorted by physical position (bottom to top) for visual layout
+    static var physicalOrder: [PadAction] {
+        allCases.sorted { $0.physicalPosition < $1.physicalPosition }
     }
 
     /// Keyboard fallback for Claude Code style prompts in editors/terminals.

@@ -42,8 +42,10 @@ struct ButtonPreset: Identifiable {
                 "Make it better", "Improve", "Refine", "Edit",
                 "Try again", "Regenerate", "Revise",
             ]),
-            .action4: .init(displayName: "Stop / Cancel", searchTerms: [
-                "Stop", "Cancel", "Close", "Dismiss", "Abort",
+            .action4: .init(displayName: "YOLO (allow all)", searchTerms: [
+                "Allow all", "Yes to all", "Accept all",
+                "Allow for This Chat", "allow for this chat",
+                "Stop", "Cancel", "Close", "Dismiss",
             ]),
         ]
     )
