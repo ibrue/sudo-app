@@ -54,6 +54,16 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(debounceDuration, forKey: "debounceDuration") }
     }
 
+    /// Auto-switch presets when the frontmost app changes category
+    @Published var autoSwitchEnabled: Bool {
+        didSet { defaults.set(autoSwitchEnabled, forKey: "autoSwitchEnabled") }
+    }
+
+    /// Maps app category → preset ID (e.g. "media" → "media", "cad" → "cad")
+    @Published var categoryPresets: [String: String] {
+        didSet { defaults.set(categoryPresets, forKey: "categoryPresets") }
+    }
+
     /// Simple mode: all buttons use keyCombo or mediaKey (no AI search needed).
     /// When enabled, the pad can be flashed to work natively without the companion app.
     var isSimpleMode: Bool {
@@ -173,6 +183,8 @@ final class SudoSettings: ObservableObject {
         self.apiKey = defaults.string(forKey: "apiKey") ?? Self.generateAPIKey()
         self.telemetryEnabled = defaults.object(forKey: "telemetryEnabled") == nil ? true : defaults.bool(forKey: "telemetryEnabled")
         self.debounceDuration = defaults.object(forKey: "debounceDuration") == nil ? 0.02 : defaults.double(forKey: "debounceDuration")
+        self.autoSwitchEnabled = defaults.object(forKey: "autoSwitchEnabled") == nil ? true : defaults.bool(forKey: "autoSwitchEnabled")
+        self.categoryPresets = (defaults.dictionary(forKey: "categoryPresets") as? [String: String]) ?? Self.defaultCategoryPresets()
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
         self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]
@@ -203,6 +215,16 @@ final class SudoSettings: ObservableObject {
         } else {
             self.macros = Self.defaultMacros()
         }
+    }
+
+    static func defaultCategoryPresets() -> [String: String] {
+        var presets: [String: String] = [:]
+        for category in AppCategory.allCases {
+            if let presetID = category.defaultPresetID {
+                presets[category.rawValue] = presetID
+            }
+        }
+        return presets
     }
 
     static func defaultAutoApproveRules() -> [AutoApproveRule] {

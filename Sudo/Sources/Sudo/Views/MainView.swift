@@ -50,6 +50,18 @@ struct MainView: View {
 
             SudoDivider()
 
+            // Auto-switch notification
+            if let switchStatus = engine.autoSwitchStatus {
+                HStack {
+                    Text(switchStatus)
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                    Spacer()
+                }
+                .padding(.horizontal, SudoTheme.spacingMd)
+                .padding(.vertical, 4)
+            }
+
             // Compact status line
             HStack {
                 if SudoSettings.shared.isSimpleMode {

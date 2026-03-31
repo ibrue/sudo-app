@@ -4,16 +4,47 @@ import Cocoa
 /// Uses AXUIElement — the same API as VoiceOver. Anti-cheat compatible.
 final class AXButtonFinder {
 
+    /// Search statistics for debugging
+    struct SearchStats {
+        var elementsVisited = 0
+        var maxDepth = 0
+        var skippedNoText = 0
+        var skippedTextTooLong = 0
+        var skippedNoMatch = 0
+        var skippedNotActionable = 0
+        var axErrors: [String] = []
+    }
+
+    /// Last search stats (for debug endpoints)
+    private(set) var lastStats = SearchStats()
+
     func findButton(for action: PadAction, pid: pid_t, bundleID: String? = nil) -> ActionResult {
+        lastStats = SearchStats()
+
         let appElement = AXUIElementCreateApplication(pid)
 
         var windowsValue: AnyObject?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsValue) == .success,
-              let windows = windowsValue as? [AXUIElement] else {
-            return .notFound(reason: "Could not access app windows")
+        let windowResult = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsValue)
+        guard windowResult == .success, let windows = windowsValue as? [AXUIElement] else {
+            lastStats.axErrors.append("Could not access app windows (AXError: \(windowResult.rawValue))")
+            print("[sudo-ax] Failed to get windows for PID \(pid): AXError \(windowResult.rawValue)")
+            return .notFound(reason: "Could not access app windows (AXError: \(windowResult.rawValue))")
         }
 
         let searchTerms = action.searchTerms(forApp: bundleID).map { $0.lowercased() }
+
+        // Check focused element first — some dialogs only expose elements via focus
+        var focusedElement: AnyObject?
+        if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement) == .success,
+           let focused = focusedElement {
+            let axFocused = focused as! AXUIElement
+            if let text = getElementText(axFocused), matchesSearchTerms(text, terms: searchTerms) {
+                if hasPosition(axFocused) {
+                    print("[sudo-ax] Found via focused element: \(text)")
+                    return .found(element: axFocused, method: .accessibilityTree)
+                }
+            }
+        }
 
         var focusedWindow: AnyObject?
         AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
@@ -25,16 +56,21 @@ final class AXButtonFinder {
 
         for window in orderedWindows {
             if let element = searchTree(element: window, searchTerms: searchTerms, depth: 0) {
+                print("[sudo-ax] Found in \(orderedWindows.count) window(s), searched \(lastStats.elementsVisited) elements, depth \(lastStats.maxDepth)")
                 return .found(element: element, method: .accessibilityTree)
             }
         }
 
-        return .notFound(reason: "No matching button found in AX tree")
+        print("[sudo-ax] Miss: searched \(lastStats.elementsVisited) elements across \(orderedWindows.count) window(s), depth \(lastStats.maxDepth), skip: \(lastStats.skippedNoMatch) no-match, \(lastStats.skippedNotActionable) not-actionable, \(lastStats.skippedNoText) no-text")
+        return .notFound(reason: "No matching button found in AX tree (\(lastStats.elementsVisited) elements searched)")
     }
 
     private func searchTree(element: AXUIElement, searchTerms: [String], depth: Int) -> AXUIElement? {
         // Electron/webview AX trees can be 25+ levels deep
         guard depth < 30 else { return nil }
+
+        lastStats.elementsVisited += 1
+        if depth > lastStats.maxDepth { lastStats.maxDepth = depth }
 
         var role: AnyObject?
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
@@ -46,23 +82,33 @@ final class AXButtonFinder {
             // Electron/webview roles
             "AXRadioButton", "AXCheckBox", "AXPopUpButton",
             "AXGenericElement", "AXListItem",
+            // Additional roles for hard-to-reach elements
+            "AXToolbarButton", "AXToggle", "AXTab",
+            "AXDisclosureTriangle", "AXIncrementor",
         ]
 
         if clickableRoles.contains(roleStr) || hasAnyAction(element) {
-            if let title = getElementText(element), matchesSearchTerms(title, terms: searchTerms) {
-                if isElementActionable(element) {
-                    return element
+            if let title = getElementText(element) {
+                if matchesSearchTerms(title, terms: searchTerms) {
+                    if isElementActionable(element) {
+                        return element
+                    }
+                    // For Electron apps: if element has position but no AXPress,
+                    // still return it — executor will try click fallback
+                    if hasPosition(element) {
+                        return element
+                    }
+                    lastStats.skippedNotActionable += 1
+                } else {
+                    lastStats.skippedNoMatch += 1
                 }
-                // For Electron apps: if element has position but no AXPress,
-                // still return it — executor will try click fallback
-                if hasPosition(element) {
-                    return element
-                }
+            } else {
+                lastStats.skippedNoText += 1
             }
         }
 
         // Check groups with combined child text
-        if roleStr == "AXGroup" || roleStr == "AXCell" || roleStr == "AXGenericElement" || roleStr == "AXListItem" {
+        if roleStr == "AXGroup" || roleStr == "AXCell" || roleStr == "AXGenericElement" || roleStr == "AXListItem" || roleStr == "AXToolbar" {
             let combinedText = getCombinedChildText(element, maxDepth: 3)
             if let text = combinedText, matchesSearchTerms(text, terms: searchTerms) {
                 if hasPosition(element) {
@@ -71,11 +117,25 @@ final class AXButtonFinder {
             }
         }
 
+        // Get children — try standard first, then visible children fallback
         var children: AnyObject?
-        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children) == .success,
-              let childArray = children as? [AXUIElement] else { return nil }
+        var childArray: [AXUIElement]?
 
-        for child in childArray {
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children) == .success {
+            childArray = children as? [AXUIElement]
+        }
+
+        // Fallback: visible children (some elements only expose this)
+        if (childArray == nil || childArray!.isEmpty) {
+            var visibleChildren: AnyObject?
+            if AXUIElementCopyAttributeValue(element, kAXVisibleChildrenAttribute as CFString, &visibleChildren) == .success {
+                childArray = visibleChildren as? [AXUIElement]
+            }
+        }
+
+        guard let finalChildren = childArray else { return nil }
+
+        for child in finalChildren {
             if let found = searchTree(element: child, searchTerms: searchTerms, depth: depth + 1) {
                 return found
             }
@@ -89,6 +149,7 @@ final class AXButtonFinder {
             kAXValueAttribute as String,
             kAXDescriptionAttribute as String,
             "AXHelp",
+            "AXLabel",
         ]
         var parts: [String] = []
         for attr in attributes {
@@ -117,10 +178,13 @@ final class AXButtonFinder {
     }
 
     /// Two-pass matching: exact match first, then substring.
-    /// Skips long text (>60 chars) to avoid false positives on paragraphs.
+    /// Relaxed to 120 chars (was 60) to catch buttons with descriptions.
     private func matchesSearchTerms(_ text: String, terms: [String]) -> Bool {
         let lower = text.lowercased().trimmingCharacters(in: .whitespaces)
-        guard lower.count <= 60 else { return false }
+        guard lower.count <= 120 else {
+            lastStats.skippedTextTooLong += 1
+            return false
+        }
         // Pass 1: exact match
         if terms.contains(where: { lower == $0 }) { return true }
         // Pass 2: substring

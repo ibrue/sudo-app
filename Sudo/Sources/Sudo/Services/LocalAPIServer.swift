@@ -129,8 +129,14 @@ final class LocalAPIServer: ObservableObject {
             return handleMCPRequestApproval(raw)
         } else if method == "GET" && path.hasPrefix("/mcp/status") {
             return handleMCPStatus()
+        } else if method == "GET" && path.hasPrefix("/debug/ax-tree") {
+            return handleAXTree(path: path)
+        } else if method == "GET" && path.hasPrefix("/debug/ax-search") {
+            return handleAXSearch(path: path)
+        } else if method == "GET" && path.hasPrefix("/debug/pipeline-test") {
+            return handlePipelineTest(path: path)
         } else {
-            return .error(404, "Not found. Endpoints: GET /status, GET /log, POST /trigger/:action, GET /config, POST /mcp/request-approval, GET /mcp/status")
+            return .error(404, "Not found. Endpoints: GET /status, GET /log, POST /trigger/:action, GET /config, POST /mcp/request-approval, GET /mcp/status, GET /debug/ax-tree, GET /debug/ax-search, GET /debug/pipeline-test")
         }
     }
 
@@ -210,6 +216,85 @@ final class LocalAPIServer: ObservableObject {
 
         let action = result.approved ? "approve" : "reject"
         return .ok("{\"approved\":\(result.approved),\"action\":\"\(action)\",\"time_ms\":\(result.timeMs)}")
+    }
+
+    // MARK: - Debug Endpoints
+
+    private func handleAXTree(path: String) -> HTTPResponse {
+        let inspector = AXInspector()
+
+        // Parse optional pid from query string
+        if let pidStr = parseQueryParam(path: path, key: "pid"),
+           let pid = Int32(pidStr) {
+            let node = inspector.dumpTree(pid: pid)
+            return .ok(node.asJSON)
+        }
+
+        // Default: frontmost app
+        guard let result = inspector.dumpFrontmostTree() else {
+            return .error(500, "No frontmost app found")
+        }
+
+        let wrapper = """
+        {"app":"\(result.appName)","pid":\(result.pid),"tree":\(result.node.asJSON)}
+        """
+        return .ok(wrapper)
+    }
+
+    private func handleAXSearch(path: String) -> HTTPResponse {
+        let termsStr = parseQueryParam(path: path, key: "terms") ?? "Allow,Approve,Yes"
+        let terms = termsStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+
+        guard let front = NSWorkspace.shared.frontmostApplication else {
+            return .error(500, "No frontmost app")
+        }
+
+        let inspector = AXInspector()
+        let results = inspector.searchElements(pid: front.processIdentifier, terms: terms)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        guard let data = try? encoder.encode(results) else {
+            return .error(500, "Failed to encode results")
+        }
+
+        let json = String(data: data, encoding: .utf8) ?? "[]"
+        let wrapper = """
+        {"app":"\(front.localizedName ?? "unknown")","pid":\(front.processIdentifier),"terms":"\(termsStr)","results":\(json)}
+        """
+        return .ok(wrapper)
+    }
+
+    private func handlePipelineTest(path: String) -> HTTPResponse {
+        let actionName = parseQueryParam(path: path, key: "action") ?? "approve"
+        guard let action = PadAction.allCases.first(where: { $0.rawValue == actionName }) else {
+            return .error(400, "Unknown action '\(actionName)'. Valid: approve, reject, action3, action4")
+        }
+
+        let inspector = AXInspector()
+        guard let result = inspector.runPipelineTest(action: action) else {
+            return .error(500, "No frontmost app")
+        }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        guard let data = try? encoder.encode(result),
+              let json = String(data: data, encoding: .utf8) else {
+            return .error(500, "Failed to encode result")
+        }
+        return .ok(json)
+    }
+
+    private func parseQueryParam(path: String, key: String) -> String? {
+        guard let queryStart = path.firstIndex(of: "?") else { return nil }
+        let query = String(path[path.index(after: queryStart)...])
+        for pair in query.split(separator: "&") {
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            if parts.count == 2 && parts[0] == key {
+                return String(parts[1]).removingPercentEncoding
+            }
+        }
+        return nil
     }
 
     private func handleMCPStatus() -> HTTPResponse {

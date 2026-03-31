@@ -10,14 +10,16 @@ final class AppDetector {
         let isBrowser: Bool
         let matchedDomain: String?
         let isPlugin: Bool
+        let category: AppCategory
 
-        init(bundleID: String, name: String, pid: pid_t, isBrowser: Bool, matchedDomain: String?, isPlugin: Bool = false) {
+        init(bundleID: String, name: String, pid: pid_t, isBrowser: Bool, matchedDomain: String?, isPlugin: Bool = false, category: AppCategory? = nil) {
             self.bundleID = bundleID
             self.name = name
             self.pid = pid
             self.isBrowser = isBrowser
             self.matchedDomain = matchedDomain
             self.isPlugin = isPlugin
+            self.category = category ?? AppCategory.from(bundleID: bundleID, appName: name)
         }
     }
 
@@ -80,9 +82,15 @@ final class AppDetector {
         }
 
         if SupportedApp.browserBundleIDs.contains(bundleID) {
-            if let domain = detectAIDomainInBrowser(pid: pid) {
-                return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: true, matchedDomain: domain)
-            }
+            let domain = detectAIDomainInBrowser(pid: pid)
+            let category: AppCategory = domain != nil ? .ai : .browser
+            return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: true, matchedDomain: domain, category: category)
+        }
+
+        // Detect other app categories (media, CAD, writing, etc.)
+        let category = AppCategory.from(bundleID: bundleID, appName: appName)
+        if category != .unknown {
+            return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: false, matchedDomain: nil, category: category)
         }
 
         return nil

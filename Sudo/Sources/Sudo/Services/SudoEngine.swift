@@ -20,6 +20,9 @@ final class SudoEngine: ObservableObject {
     @Published var lastResult: ActionResult = .idle
     @Published var actionLog: [ActionLogEntry] = []
     @Published var autoApproveCount: Int = 0
+    @Published var autoSwitchStatus: String? = nil
+    @Published var currentCategory: AppCategory = .unknown
+    private var lastAppliedPresetID: String? = nil
 
     // MARK: - MCP Server support
 
@@ -228,11 +231,40 @@ final class SudoEngine: ObservableObject {
             DispatchQueue.main.async {
                 self.detectedApp = label
                 self.currentBundleID = app.bundleID
+                self.currentCategory = app.category
             }
+            handleAutoSwitch(category: app.category, appName: app.name)
         } else {
+            let category = AppCategory.from(bundleID: frontBundleID ?? "", appName: frontName)
             DispatchQueue.main.async {
                 self.detectedApp = frontName
                 self.currentBundleID = frontBundleID
+                self.currentCategory = category
+            }
+            handleAutoSwitch(category: category, appName: frontName)
+        }
+    }
+
+    private func handleAutoSwitch(category: AppCategory, appName: String) {
+        guard SudoSettings.shared.autoSwitchEnabled else { return }
+        guard category != .unknown else { return }
+
+        let settings = SudoSettings.shared
+        guard let presetID = settings.categoryPresets[category.rawValue],
+              let preset = ButtonPreset.all.first(where: { $0.id == presetID }),
+              presetID != lastAppliedPresetID else { return }
+
+        preset.apply()
+        lastAppliedPresetID = presetID
+
+        DispatchQueue.main.async {
+            self.autoSwitchStatus = "→ \(preset.name.lowercased())"
+            print("[sudo] auto-switch: \(appName) → \(preset.name) (\(category.rawValue))")
+            // Clear after 3s
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                if self.autoSwitchStatus == "→ \(preset.name.lowercased())" {
+                    self.autoSwitchStatus = nil
+                }
             }
         }
     }

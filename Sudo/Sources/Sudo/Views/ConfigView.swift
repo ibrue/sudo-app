@@ -15,6 +15,7 @@ struct ConfigView: View {
 
     // Section toggles
     @State private var showRemap = false
+    @State private var showAutoSwitch = false
     @State private var showSimpleMode = false
     @State private var showProfiles = false
     @State private var showMacros = false
@@ -72,52 +73,59 @@ struct ConfigView: View {
                         if showRemap { remapContent }
                     }
 
-                    // 2. Simple mode + firmware
+                    // 2. Auto-switch
+                    section {
+                        SectionHeader("auto-switch", isExpanded: $showAutoSwitch,
+                                      badge: settings.autoSwitchEnabled ? "on" : nil)
+                        if showAutoSwitch { autoSwitchContent }
+                    }
+
+                    // 3. Simple mode + firmware
                     section {
                         SectionHeader("simple mode", isExpanded: $showSimpleMode,
                                       badge: settings.isSimpleMode ? "active" : nil)
                         if showSimpleMode { simpleModeContent }
                     }
 
-                    // 3. Per-app profiles
+                    // 4. Per-app profiles
                     section {
                         SectionHeader("per-app profiles", isExpanded: $showProfiles)
                         if showProfiles { profilesContent }
                     }
 
-                    // 4. Macros
+                    // 5. Macros
                     section {
                         SectionHeader("macros", isExpanded: $showMacros, count: settings.macros.count)
                         if showMacros { macrosContent }
                     }
 
-                    // 5. Auto-approve
+                    // 6. Auto-approve
                     section {
                         SectionHeader("auto-approve", isExpanded: $showAutoApprove,
                                       badge: settings.autoApproveEnabled ? "on" : nil)
                         if showAutoApprove { autoApproveContent }
                     }
 
-                    // 6. Settings (toggles + hotkeys)
+                    // 7. Settings (toggles + hotkeys)
                     section {
                         SectionHeader("settings", isExpanded: $showSettings)
                         if showSettings { settingsContent }
                     }
 
-                    // 7. Developer API
+                    // 8. Developer API
                     section {
                         SectionHeader("developer api", isExpanded: $showAPI,
                                       badge: apiServer.isRunning ? "on" : nil)
                         if showAPI { apiContent }
                     }
 
-                    // 8. History
+                    // 9. History
                     section {
                         SectionHeader("history", isExpanded: $showHistory, count: engine.actionLog.count)
                         if showHistory { historyContent }
                     }
 
-                    // 9. Plugins (conditional)
+                    // 10. Plugins (conditional)
                     if pluginManager.loadedPlugins.count > 0 {
                         section {
                             SectionHeader("plugins", isExpanded: .constant(true), count: pluginManager.loadedPlugins.count)
@@ -129,7 +137,7 @@ struct ConfigView: View {
                         }
                     }
 
-                    // 10. Terminal (dev only)
+                    // 11. Terminal (dev only)
                     if isDeveloperMode {
                         section {
                             SectionHeader("terminal", isExpanded: $showTerminal,
@@ -413,6 +421,86 @@ struct ConfigView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Auto-Switch
+
+    @ViewBuilder
+    private var autoSwitchContent: some View {
+        Text("automatically switches button preset when the focused app changes category")
+            .font(SudoTheme.mono(size: 8))
+            .foregroundColor(SudoTheme.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+
+        SettingToggle(label: "auto-switch on app focus", isOn: Binding(
+            get: { settings.autoSwitchEnabled },
+            set: { settings.autoSwitchEnabled = $0 }
+        ))
+
+        if let status = engine.autoSwitchStatus {
+            Text(status)
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(SudoTheme.accent)
+        }
+
+        if settings.autoSwitchEnabled {
+            SudoDivider()
+
+            Text("category → preset:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+
+            ForEach(AppCategory.allCases.filter { $0 != .unknown }, id: \.rawValue) { category in
+                let presetID = settings.categoryPresets[category.rawValue]
+                let presetName = ButtonPreset.all.first(where: { $0.id == presetID })?.name.lowercased() ?? "none"
+                let isActive = engine.currentCategory == category
+
+                HStack {
+                    if isActive {
+                        Text("●")
+                            .font(SudoTheme.mono(size: 6))
+                            .foregroundColor(SudoTheme.accent)
+                            .frame(width: 10)
+                    } else {
+                        Spacer().frame(width: 10)
+                    }
+                    Text(category.displayName)
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(isActive ? SudoTheme.text : SudoTheme.textMuted)
+                        .frame(width: 90, alignment: .leading)
+                    Text("→")
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.border)
+                    Text(presetName)
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.text)
+                        .lineLimit(1)
+                    Spacer()
+                    // Cycle through available presets
+                    Button("change") {
+                        cyclePreset(for: category)
+                    }
+                    .font(SudoTheme.mono(size: 7))
+                    .foregroundColor(SudoTheme.accent)
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Button("reset all to defaults") {
+                settings.categoryPresets = SudoSettings.defaultCategoryPresets()
+            }
+            .font(SudoTheme.mono(size: 8))
+            .foregroundColor(SudoTheme.textMuted)
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func cyclePreset(for category: AppCategory) {
+        let allPresets = ButtonPreset.all
+        let currentID = settings.categoryPresets[category.rawValue]
+        let currentIdx = allPresets.firstIndex(where: { $0.id == currentID }) ?? -1
+        let nextIdx = (currentIdx + 1) % allPresets.count
+        settings.categoryPresets[category.rawValue] = allPresets[nextIdx].id
     }
 
     // MARK: - Simple Mode + Firmware

@@ -51,8 +51,10 @@
 
 ## Architecture
 - `SudoEngine` — central orchestrator, owns detection → execution pipeline
-- `AppDetector` — identifies frontmost app via bundle ID or browser tab
-- `AXButtonFinder` — walks accessibility tree to find buttons (primary, 30-level depth)
+- `AppDetector` — identifies frontmost app via bundle ID or browser tab, returns AppCategory
+- `AppCategory` — enum: ai, terminal, browser, media, cad, videoEditing, writing, communication, design, unknown
+- `AXButtonFinder` — walks accessibility tree to find buttons (primary, 30-level depth), tracks SearchStats
+- `AXInspector` — debug tool: tree dumps, search dry-runs, pipeline tests (exposed via /debug/ endpoints)
 - `AutomationButtonFinder` — AppleScript via System Events for hard-to-reach buttons (sheets, alerts, nested dialogs)
 - `OCRButtonFinder` — Vision framework screenshot OCR (fallback)
 - `ActionExecutor` — presses buttons via AXPress or CGEvent click (with center-click fallback)
@@ -64,7 +66,7 @@
 - `BugReporter` — collects diagnostics and POSTs to sudo.supply/api/bugs
 - `SudoSettings` — persisted preferences singleton (UserDefaults)
 - `PadAction` — enum mapping 4 buttons to actions, delegates to settings for display names / search terms
-- `ButtonPreset` — quick-apply configurations with 3 modes: aiSearch, keyCombo, mediaKey
+- `ButtonPreset` — quick-apply configs (12 presets: ai-agent, plan-mode, claude-code, shortcuts, media, browsing, discord, cad, video-editing, writing, communication, design)
 - `MacroSequence` — chained actions with delays, assignable to buttons
 - `AutoApproveRule` — rules engine for automatic approval with safety exclusions
 - `RulesEngine` — evaluates auto-approve rules against app + context
@@ -92,6 +94,20 @@
 - Permission check runs every 3s until connected, auto-retries event tap
 - `isConnected` = hotkey event tap successfully created (no AX test needed)
 - Screen Recording permission needed for OCR fallback only
+
+## Auto-Profile Switching
+- `SudoSettings.autoSwitchEnabled` (default: true) — auto-applies preset when frontmost app changes category
+- `SudoSettings.categoryPresets: [String: String]` — maps category.rawValue → preset ID
+- `AppCategory.from(bundleID:appName:)` — detects category from bundle ID, falls back to name substring matching
+- `SudoEngine.handleAutoSwitch()` — called from `updateDetectedApp()`, applies preset if category changed
+- `SudoEngine.autoSwitchStatus` — transient UI notification ("→ media controls"), clears after 3s
+- Won't re-apply same preset (tracked via `lastAppliedPresetID`)
+
+## Debug API Endpoints (requires X-API-Key header)
+- `GET /debug/ax-tree` — dump AX tree of frontmost app as JSON (depth 8)
+- `GET /debug/ax-tree?pid=N` — dump AX tree of specific PID
+- `GET /debug/ax-search?terms=Allow,Approve` — dry-run search for terms in frontmost app
+- `GET /debug/pipeline-test?action=approve` — run full detection pipeline, return detailed report with timings
 
 ## Simple Mode & Firmware Flashing
 - Simple mode = all 4 buttons use keyCombo or mediaKey (no aiSearch)
