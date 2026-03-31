@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
+    @ObservedObject var rebuilder: DevRebuilder
     @ObservedObject var settings = SudoSettings.shared
     @State private var showTestPanel = false
     @State private var showRemapPanel = false
@@ -28,18 +29,39 @@ struct MenuBarView: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            // Permission warning
+            // Permission warnings
             if !engine.isConnected {
-                HStack(spacing: 6) {
-                    Text("⚠ accessibility permission required")
-                        .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.error)
-                    Spacer()
-                    Button("open") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text("!")
+                            .font(SudoTheme.mono(size: 10, weight: .bold))
+                            .foregroundColor(SudoTheme.bg)
+                            .frame(width: 16, height: 16)
+                            .background(SudoTheme.error)
+                        Text("accessibility permission required")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.error)
                     }
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.accent)
+                    Text("System Settings → Privacy & Security → Accessibility → enable Sudo")
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("After enabling, quit and reopen the app.")
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Button(action: {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    }) {
+                        Text("[ OPEN SYSTEM SETTINGS ]")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.accent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                            .overlay(
+                                Rectangle()
+                                    .stroke(SudoTheme.accent, lineWidth: SudoTheme.borderWidth)
+                            )
+                    }
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, SudoTheme.spacingMd)
@@ -274,9 +296,34 @@ struct MenuBarView: View {
 
             divider
 
+            // Rebuild from git
+            if rebuilder.isRebuilding {
+                HStack {
+                    Text("rebuilding: \(rebuilder.status)")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                    Spacer()
+                }
+                .padding(.horizontal, SudoTheme.spacingMd)
+                .padding(.vertical, 8)
+                divider
+            }
+
             // Footer
-            HStack {
-                Button("Check for Updates") {
+            HStack(spacing: 8) {
+                Button("Pull & Rebuild") {
+                    rebuilder.rebuild()
+                }
+                .buttonStyle(.plain)
+                .font(SudoTheme.mono(size: 10))
+                .foregroundColor(rebuilder.isRebuilding ? SudoTheme.textMuted : SudoTheme.accent)
+                .disabled(rebuilder.isRebuilding)
+
+                Text("·")
+                    .font(SudoTheme.mono(size: 10))
+                    .foregroundColor(SudoTheme.border)
+
+                Button("Updates") {
                     updater.checkForUpdates()
                 }
                 .buttonStyle(.plain)
