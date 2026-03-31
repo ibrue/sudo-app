@@ -1,4 +1,5 @@
 import Foundation
+import Cocoa
 import Combine
 
 /// Definition of a plugin loaded from a JSON file.
