@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import ServiceManagement
 
 /// Persisted user settings via UserDefaults.
