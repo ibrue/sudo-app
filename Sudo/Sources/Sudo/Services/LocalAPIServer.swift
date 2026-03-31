@@ -125,8 +125,12 @@ final class LocalAPIServer: ObservableObject {
         } else if method == "POST" && path.hasPrefix("/trigger/") {
             let action = String(path.dropFirst("/trigger/".count)).split(separator: "?").first.map(String.init) ?? ""
             return handleTrigger(action: action)
+        } else if method == "POST" && path.hasPrefix("/mcp/request-approval") {
+            return handleMCPRequestApproval(raw)
+        } else if method == "GET" && path.hasPrefix("/mcp/status") {
+            return handleMCPStatus()
         } else {
-            return .error(404, "Not found. Endpoints: GET /status, GET /log, POST /trigger/:action, GET /config")
+            return .error(404, "Not found. Endpoints: GET /status, GET /log, POST /trigger/:action, GET /config, POST /mcp/request-approval, GET /mcp/status")
         }
     }
 
@@ -175,6 +179,43 @@ final class LocalAPIServer: ObservableObject {
 
         engine.triggerAction(action)
         return .ok("{\"triggered\":\"\(action.rawValue)\",\"display_name\":\"\(action.displayName)\"}")
+    }
+
+    // MARK: - MCP Endpoints
+
+    private func handleMCPRequestApproval(_ raw: String) -> HTTPResponse {
+        guard let engine = engine else { return .error(500, "Engine not available") }
+
+        // Parse JSON body from the raw HTTP request
+        let prompt: String
+        let timeout: TimeInterval
+
+        if let bodyStart = raw.range(of: "\r\n\r\n") {
+            let bodyString = String(raw[bodyStart.upperBound...])
+            if let bodyData = bodyString.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] {
+                prompt = json["prompt"] as? String ?? "approval requested"
+                timeout = json["timeout"] as? TimeInterval ?? 30
+            } else {
+                prompt = "approval requested"
+                timeout = 30
+            }
+        } else {
+            prompt = "approval requested"
+            timeout = 30
+        }
+
+        // This blocks until the user presses approve/reject or timeout
+        let result = engine.waitForMCPApproval(prompt: prompt, timeout: timeout)
+
+        let action = result.approved ? "approve" : "reject"
+        return .ok("{\"approved\":\(result.approved),\"action\":\"\(action)\",\"time_ms\":\(result.timeMs)}")
+    }
+
+    private func handleMCPStatus() -> HTTPResponse {
+        guard let engine = engine else { return .error(500, "Engine not available") }
+        let hasPending = engine.pendingMCPRequest != nil
+        return .ok("{\"accepting_requests\":true,\"has_pending_request\":\(hasPending)}")
     }
 }
 

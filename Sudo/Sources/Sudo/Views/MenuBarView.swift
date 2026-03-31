@@ -94,6 +94,38 @@ struct MenuBarView: View {
                 if !engine.lastContext.isEmpty {
                     statusRow(label: "ctx", value: engine.lastContext)
                 }
+                if let mcpPrompt = engine.pendingMCPRequest {
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("mcp:")
+                            .font(SudoTheme.mono(size: 11))
+                            .foregroundColor(SudoTheme.accent)
+                            .frame(width: 36, alignment: .leading)
+                        Text(mcpPrompt)
+                            .font(SudoTheme.mono(size: 11))
+                            .foregroundColor(SudoTheme.accent)
+                            .lineLimit(2)
+                    }
+                    HStack(spacing: 8) {
+                        Button(action: { engine.resolveMCPRequest(approved: true) }) {
+                            Text("[ approve ]")
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.accent)
+                                .padding(.vertical, 2)
+                                .padding(.horizontal, 6)
+                                .overlay(Rectangle().stroke(SudoTheme.accent, lineWidth: SudoTheme.borderWidth))
+                        }
+                        .buttonStyle(.plain)
+                        Button(action: { engine.resolveMCPRequest(approved: false) }) {
+                            Text("[ reject ]")
+                                .font(SudoTheme.mono(size: 9))
+                                .foregroundColor(SudoTheme.error)
+                                .padding(.vertical, 2)
+                                .padding(.horizontal, 6)
+                                .overlay(Rectangle().stroke(SudoTheme.error, lineWidth: SudoTheme.borderWidth))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
@@ -488,11 +520,26 @@ struct MenuBarView: View {
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 10)
 
-            // Version
-            HStack {
+            // Stats + Version
+            HStack(spacing: 0) {
+                Text("\(settings.totalApproves) approves")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
+                Text(" · ")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.border)
+                Text("\(settings.totalRejects) rejects")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
+                Text(" · ")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.border)
+                Text("\(settings.currentStreak) day streak")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
                 Spacer()
                 Text("v\(OTAUpdater.currentVersion)")
-                    .font(SudoTheme.mono(size: 9))
+                    .font(SudoTheme.mono(size: 8))
                     .foregroundColor(SudoTheme.surface)
             }
             .padding(.horizontal, SudoTheme.spacingMd)
@@ -830,6 +877,168 @@ struct MenuBarView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Macros Panel
+
+    @ViewBuilder
+    private var macrosPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(settings.macros.enumerated()), id: \.element.id) { index, macro in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(macro.name)
+                            .font(SudoTheme.mono(size: 10, weight: .bold))
+                            .foregroundColor(SudoTheme.text)
+                        Text("(\(macro.steps.count) steps)")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.textMuted)
+                        Spacer()
+                        Button("run") { engine.executeMacro(macro) }
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.accent)
+                            .buttonStyle(.plain)
+                        Button(editingMacroID == macro.id ? "done" : "edit") {
+                            editingMacroID = editingMacroID == macro.id ? nil : macro.id
+                        }
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.accent)
+                        .buttonStyle(.plain)
+                        Button("del") { settings.macros.removeAll { $0.id == macro.id } }
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.error)
+                            .buttonStyle(.plain)
+                    }
+                    Text(macroStepsSummary(macro))
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.surface)
+                        .lineLimit(2)
+                    if let assigned = macro.assignedButton, let action = PadAction(rawValue: assigned) {
+                        HStack {
+                            Text("assigned to F\(action.fKeyNumber)")
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.accent)
+                            Spacer()
+                            Button("unassign") { settings.macros[index].assignedButton = nil }
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.error)
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    if editingMacroID == macro.id {
+                        macroEditView(index: index)
+                    }
+                }
+                .padding(6)
+                .overlay(Rectangle().stroke(editingMacroID == macro.id ? SudoTheme.accent.opacity(0.3) : SudoTheme.border, lineWidth: 1))
+            }
+            Button(action: {
+                let m = MacroSequence(name: "new macro", steps: [MacroStep(action: .approve, delayAfter: 1.0)])
+                settings.macros.append(m)
+                editingMacroID = m.id
+            }) {
+                Text("[ + new macro ]")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: SudoTheme.borderWidth))
+            }
+            .buttonStyle(.plain)
+            Button(action: { settings.macros = SudoSettings.defaultMacros(); editingMacroID = nil }) {
+                Text("reset to defaults")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private func macroEditView(index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text("name").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted).frame(width: 32, alignment: .trailing)
+                TextField("macro name", text: Binding(get: { settings.macros[index].name }, set: { settings.macros[index].name = $0 }))
+                    .font(SudoTheme.mono(size: 9)).textFieldStyle(.plain).foregroundColor(SudoTheme.text)
+                    .padding(.horizontal, 4).padding(.vertical, 2)
+                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+            }
+            divider
+            Text("steps:").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted)
+            ForEach(Array(settings.macros[index].steps.enumerated()), id: \.element.id) { stepIdx, step in
+                HStack(spacing: 4) {
+                    Text("\(stepIdx + 1).").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted).frame(width: 16, alignment: .trailing)
+                    macroActionPicker(macroIndex: index, stepIndex: stepIdx)
+                    Text("wait").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted)
+                    macroDelayPicker(macroIndex: index, stepIndex: stepIdx)
+                    Spacer()
+                    Button("x") { if settings.macros[index].steps.count > 1 { settings.macros[index].steps.remove(at: stepIdx) } }
+                        .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                }
+            }
+            Button(action: { settings.macros[index].steps.append(MacroStep(action: .approve, delayAfter: 1.0)) }) {
+                Text("[ + add step ]").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent)
+            }.buttonStyle(.plain)
+            divider
+            Text("assign to button:").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted)
+            HStack(spacing: 4) {
+                ForEach(PadAction.allCases, id: \.rawValue) { action in
+                    let isAssigned = settings.macros[index].assignedButton == action.rawValue
+                    Button(action: {
+                        for i in settings.macros.indices { if settings.macros[i].assignedButton == action.rawValue { settings.macros[i].assignedButton = nil } }
+                        settings.macros[index].assignedButton = isAssigned ? nil : action.rawValue
+                    }) {
+                        Text("F\(action.fKeyNumber)")
+                            .font(SudoTheme.mono(size: 8, weight: isAssigned ? .bold : .regular))
+                            .foregroundColor(isAssigned ? SudoTheme.bg : SudoTheme.accent)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(isAssigned ? SudoTheme.accent : Color.clear)
+                            .overlay(Rectangle().stroke(SudoTheme.accent, lineWidth: 1))
+                    }.buttonStyle(.plain)
+                }
+            }
+        }.padding(.top, 4)
+    }
+
+    private func macroActionPicker(macroIndex: Int, stepIndex: Int) -> some View {
+        HStack(spacing: 2) {
+            ForEach(PadAction.allCases, id: \.rawValue) { action in
+                let sel = settings.macros[macroIndex].steps[stepIndex].action == action.rawValue
+                Button(action: { let old = settings.macros[macroIndex].steps[stepIndex]; settings.macros[macroIndex].steps[stepIndex] = MacroStep(action: action, delayAfter: old.delayAfter) }) {
+                    Text(action.rawValue).font(SudoTheme.mono(size: 7))
+                        .foregroundColor(sel ? SudoTheme.bg : SudoTheme.textMuted)
+                        .padding(.horizontal, 3).padding(.vertical, 1)
+                        .background(sel ? SudoTheme.accent : Color.clear)
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func macroDelayPicker(macroIndex: Int, stepIndex: Int) -> some View {
+        HStack(spacing: 2) {
+            ForEach([0.0, 0.5, 1.0, 1.5, 2.0], id: \.self) { delay in
+                let sel = settings.macros[macroIndex].steps[stepIndex].delayAfter == delay
+                Button(action: {
+                    let old = settings.macros[macroIndex].steps[stepIndex]
+                    if let a = old.padAction { settings.macros[macroIndex].steps[stepIndex] = MacroStep(action: a, delayAfter: delay) }
+                }) {
+                    Text(delay == 0 ? "0s" : String(format: "%.1fs", delay)).font(SudoTheme.mono(size: 7))
+                        .foregroundColor(sel ? SudoTheme.bg : SudoTheme.textMuted)
+                        .padding(.horizontal, 2).padding(.vertical, 1)
+                        .background(sel ? SudoTheme.accent : Color.clear)
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func macroStepsSummary(_ macro: MacroSequence) -> String {
+        var parts: [String] = []
+        for (i, step) in macro.steps.enumerated() {
+            parts.append(step.action)
+            if step.delayAfter > 0 && i < macro.steps.count - 1 { parts.append(String(format: "%.1fs", step.delayAfter)) }
+        }
+        return parts.joined(separator: " → ")
     }
 
     private func endpointRow(_ method: String, _ path: String, _ desc: String) -> some View {
