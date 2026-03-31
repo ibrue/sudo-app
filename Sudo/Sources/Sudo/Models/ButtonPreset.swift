@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// Execution mode for a button action.
 enum ActionMode: String, Codable {
