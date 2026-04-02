@@ -1,4 +1,4 @@
-import Foundation
+import Cocoa
 import Network
 
 /// Local HTTP API server for programmatic control of the sudo pad.

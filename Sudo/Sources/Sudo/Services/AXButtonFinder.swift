@@ -36,7 +36,9 @@ final class AXButtonFinder {
         // Check focused element first — some dialogs only expose elements via focus
         var focusedElement: AnyObject?
         if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement) == .success,
-           let axFocused = focusedElement as? AXUIElement {
+           let focusedEl = focusedElement {
+            // CF types always succeed on cast — nil check above is the safety
+            let axFocused = focusedEl as! AXUIElement  // swiftlint:disable:this force_cast
             if let text = getElementText(axFocused), matchesSearchTerms(text, terms: searchTerms) {
                 if hasPosition(axFocused) {
                     print("[sudo-ax] Found via focused element: \(text)")
@@ -49,8 +51,8 @@ final class AXButtonFinder {
         AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
 
         var orderedWindows = windows
-        if let focused = focusedWindow as? AXUIElement {
-            orderedWindows.insert(focused, at: 0)
+        if let focused = focusedWindow {
+            orderedWindows.insert(focused as! AXUIElement, at: 0)  // swiftlint:disable:this force_cast
         }
 
         for window in orderedWindows {
@@ -219,7 +221,8 @@ final class AXButtonFinder {
 
         var focusedWindow: AnyObject?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow) == .success,
-              let axWindow = focusedWindow as? AXUIElement else { return nil }
+              let window = focusedWindow else { return nil }
+        let axWindow = window as! AXUIElement  // swiftlint:disable:this force_cast
 
         var collected: [String] = []
         collectContextText(element: axWindow, collected: &collected, depth: 0)

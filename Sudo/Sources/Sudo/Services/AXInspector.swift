@@ -87,17 +87,16 @@ final class AXInspector {
         var posStr: String?
         var sizeStr: String?
         var hasPos = false
-        if let posValue = getAttribute(element, kAXPositionAttribute as String),
-           let axPos = posValue as? AXValue {
+        if let posValue = getAttribute(element, kAXPositionAttribute as String) {
             var point = CGPoint.zero
-            AXValueGetValue(axPos, .cgPoint, &point)
+            // CF type cast always succeeds — nil check above is the safety
+            AXValueGetValue(posValue as! AXValue, .cgPoint, &point)  // swiftlint:disable:this force_cast
             posStr = "\(Int(point.x)),\(Int(point.y))"
             hasPos = true
         }
-        if let sizeValue = getAttribute(element, kAXSizeAttribute as String),
-           let axSize = sizeValue as? AXValue {
+        if let sizeValue = getAttribute(element, kAXSizeAttribute as String) {
             var size = CGSize.zero
-            AXValueGetValue(axSize, .cgSize, &size)
+            AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)  // swiftlint:disable:this force_cast
             sizeStr = "\(Int(size.width))x\(Int(size.height))"
         }
 
@@ -283,7 +282,7 @@ final class AXInspector {
     }
 
     private func getElementText(_ element: AXUIElement) -> String? {
-        let attrs = [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, "AXHelp" as CFString]
+        let attrs: [CFString] = [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, "AXHelp" as CFString]
         var parts: [String] = []
         for attr in attrs {
             if let val = getAttribute(element, attr as String) as? String, !val.isEmpty {

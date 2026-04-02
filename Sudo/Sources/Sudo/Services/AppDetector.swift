@@ -101,7 +101,8 @@ final class AppDetector {
 
         var titleValue: AnyObject?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &titleValue) == .success,
-              let focusedWindow = titleValue as? AXUIElement else { return nil }
+              let windowVal = titleValue else { return nil }
+        let focusedWindow = windowVal as! AXUIElement  // swiftlint:disable:this force_cast
 
         var windowTitleValue: AnyObject?
         AXUIElementCopyAttributeValue(focusedWindow, kAXTitleAttribute as CFString, &windowTitleValue)

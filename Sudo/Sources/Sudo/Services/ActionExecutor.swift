@@ -37,13 +37,12 @@ final class ActionExecutor {
         var positionValue: AnyObject?
         var sizeValue: AnyObject?
         if AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
-           AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
-           let axPos = positionValue as? AXValue,
-           let axSize = sizeValue as? AXValue {
+           AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success {
             var position = CGPoint.zero
             var size = CGSize.zero
-            AXValueGetValue(axPos, .cgPoint, &position)
-            AXValueGetValue(axSize, .cgSize, &size)
+            // CF type casts always succeed — the .success check above is the safety
+            AXValueGetValue(positionValue as! AXValue, .cgPoint, &position)  // swiftlint:disable:this force_cast
+            AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)  // swiftlint:disable:this force_cast
             let center = CGPoint(x: position.x + size.width / 2, y: position.y + size.height / 2)
             return performClickAtPoint(center)
         }

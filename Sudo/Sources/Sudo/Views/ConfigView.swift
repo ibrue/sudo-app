@@ -607,8 +607,8 @@ struct ConfigView: View {
 
             ForEach(AppCategory.allCases.filter { $0 != .unknown }, id: \.rawValue) { category in
                 let presetID = settings.categoryPresets[category.rawValue]
-                let presetName = ButtonPreset.all.first(where: { $0.id == presetID })?.name.lowercased() ?? "none"
                 let isActive = engine.currentCategory == category
+                let currentPresetName = ButtonPreset.all.first(where: { $0.id == presetID })?.name.lowercased() ?? "none"
 
                 HStack {
                     if isActive {
@@ -626,8 +626,7 @@ struct ConfigView: View {
                     Text("→")
                         .font(SudoTheme.mono(size: 8))
                         .foregroundColor(SudoTheme.border)
-                    Spacer()
-                    // Preset picker menu
+                    // Preset picker menu with current name as label
                     Menu {
                         ForEach(ButtonPreset.all) { preset in
                             Button(preset.name.lowercased()) {
@@ -635,12 +634,17 @@ struct ConfigView: View {
                             }
                         }
                     } label: {
-                        Text("▾")
-                            .font(SudoTheme.mono(size: 9))
-                            .foregroundColor(SudoTheme.accent)
+                        HStack(spacing: 2) {
+                            Text(currentPresetName)
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.text)
+                                .lineLimit(1)
+                            Text("▾")
+                                .font(SudoTheme.mono(size: 8))
+                                .foregroundColor(SudoTheme.accent)
+                        }
                     }
                     .menuStyle(.borderlessButton)
-                    .frame(width: 16)
                     .accessibilityLabel("change preset for \(category.displayName)")
                 }
             }
