@@ -282,10 +282,10 @@ final class AXInspector {
     }
 
     private func getElementText(_ element: AXUIElement) -> String? {
-        let attrs: [CFString] = [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, "AXHelp" as CFString]
+        let attrs: [String] = [kAXTitleAttribute as String, kAXValueAttribute as String, kAXDescriptionAttribute as String, "AXHelp"]
         var parts: [String] = []
         for attr in attrs {
-            if let val = getAttribute(element, attr as String) as? String, !val.isEmpty {
+            if let val = getAttribute(element, attr) as? String, !val.isEmpty {
                 parts.append(val)
             }
         }
