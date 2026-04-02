@@ -126,33 +126,9 @@ cp -r dist/Sudo.app /Applications/
 Version is read from `OTAUpdater.currentVersion` (single source of truth).
 Build script reads version from Swift source via grep.
 
-## UI Audit Progress (from session 2026-04-02)
+## UI Audit (completed 2026-04-02)
 
-A full UI audit identified 17 issues across critical/high/medium/low severity.
-
-### Completed (7/17):
-1. **Notification overflow** — MainView: auto-switch notification now has `.lineLimit(1).truncationMode(.tail)`
-2. **Status truncation** — MainView: app name uses `.truncationMode(.middle)` to prevent squishing
-3. **Version squish** — MainView: footer uses `.layoutPriority(1)` so version text doesn't compress
-4. **Accessibility labels** — MainView, MenuBarHelpers: all interactive elements have `.accessibilityLabel`
-5. **Dead StatusRow component** — MenuBarHelpers: removed unused `StatusRow` view
-6. **Missing aiSearch indicator** — MenuBarHelpers: `DeviceButton` shows `"◉"` for aiSearch mode
-7. **Hardcoded colors in TestPromptView** — All `Color(hex:)` calls replaced with `SudoTheme.*` references
-8. **isDeveloperMode** — SudoSettings: added computed property, removed global variable from MenuBarHelpers
-
-### Remaining (ConfigView.swift — needs full rewrite):
-9. **Auto-approve rule editor** — Currently just toggles; needs fields to edit appFilter, contextContains, contextExcludes
-10. **Macro editor** — Currently just a list; needs add/remove steps, assign to button, delete macro
-11. **Preset picker** — Replace "change" cycling button with a proper picker/menu
-12. **Persist section expansion** — Bind section collapsed/expanded state to `settings.expandedSections`
-13. **Terminal height** — Increase from 150pt to 200pt
-14. **Condense simple mode text** — Current explanation is too verbose
-15. **isDeveloperMode in ConfigView** — Replace remaining `isDeveloperMode` references with `SudoSettings.shared.isDeveloperMode`
-16. **Accessibility labels in ConfigView** — Add labels to all interactive elements
-17. **Button name editing UX** — Inline text fields for renaming buttons
-
-### How to continue:
-The ConfigView.swift rewrite is the main remaining task. Read the current file (793 lines), then rewrite it incorporating fixes #9-17 above. After that, commit and push.
+All 17 audit issues resolved across MainView, MenuBarHelpers, TestPromptView, SudoSettings, and ConfigView.
 
 ## Common Issues
 - `CGEventFlags` requires `import CoreGraphics` in any file using it
