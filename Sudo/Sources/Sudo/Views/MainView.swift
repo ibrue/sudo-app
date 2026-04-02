@@ -14,17 +14,20 @@ struct MainView: View {
                 Text("[sudo]")
                     .font(SudoTheme.mono(size: 14, weight: .bold))
                     .foregroundColor(SudoTheme.accent)
+                    .accessibilityLabel("sudo home")
                 Spacer()
                 Circle()
                     .fill(engine.isConnected ? SudoTheme.accent : SudoTheme.error)
                     .frame(width: 6, height: 6)
                     .padding(.trailing, 6)
+                    .accessibilityLabel(engine.isConnected ? "connected" : "disconnected")
                 Button(action: onOpenConfig) {
                     Text("[=]")
                         .font(SudoTheme.mono(size: 11))
                         .foregroundColor(SudoTheme.textMuted)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("open settings")
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.top, 14)
@@ -50,18 +53,45 @@ struct MainView: View {
 
             SudoDivider()
 
+            // Auto-switch notification
+            if let switchStatus = engine.autoSwitchStatus {
+                HStack {
+                    Text(switchStatus)
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer()
+                }
+                .padding(.horizontal, SudoTheme.spacingMd)
+                .padding(.vertical, 4)
+            }
+
             // Compact status line
             HStack {
-                Text("app:")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.textMuted)
-                Text(engine.detectedApp.lowercased())
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.text)
-                    .lineLimit(1)
-                Text("·")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.border)
+                if SudoSettings.shared.isSimpleMode {
+                    Text("mode:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text("simple")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                    Text("·")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.border)
+                } else {
+                    Text("app:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text(engine.detectedApp.lowercased())
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.text)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text("·")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.border)
+                }
                 Text("last:")
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
@@ -69,6 +99,7 @@ struct MainView: View {
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.text)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 8)
@@ -91,6 +122,7 @@ struct MainView: View {
                             .font(SudoTheme.mono(size: 9))
                             .foregroundColor(SudoTheme.accent)
                             .buttonStyle(.plain)
+                            .accessibilityLabel("install update")
                     }
                 }
                 .padding(.horizontal, SudoTheme.spacingMd)
@@ -103,17 +135,19 @@ struct MainView: View {
                 Text("\(SudoSettings.shared.totalPresses) presses · \(SudoSettings.shared.currentStreak) day streak")
                     .font(SudoTheme.mono(size: 8))
                     .foregroundColor(SudoTheme.surface)
+                    .lineLimit(1)
                 Spacer()
                 Text("v\(OTAUpdater.currentVersion)")
                     .font(SudoTheme.mono(size: 8))
                     .foregroundColor(SudoTheme.surface)
+                    .layoutPriority(1)
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.top, 6)
 
             // Footer
             HStack(spacing: 8) {
-                if isDeveloperMode {
+                if SudoSettings.shared.isDeveloperMode {
                     Button(rebuilder.isRebuilding ? rebuilder.status : "pull & rebuild") {
                         rebuilder.rebuild()
                     }
@@ -131,6 +165,7 @@ struct MainView: View {
                     .buttonStyle(.plain)
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
+                    .accessibilityLabel("check for updates")
 
                 Text("·")
                     .font(SudoTheme.mono(size: 9))
@@ -140,6 +175,7 @@ struct MainView: View {
                     .buttonStyle(.plain)
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
+                    .accessibilityLabel("report a bug")
 
                 Spacer()
 
@@ -147,6 +183,7 @@ struct MainView: View {
                     .buttonStyle(.plain)
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
+                    .accessibilityLabel("quit sudo")
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 8)
@@ -213,10 +250,12 @@ struct MainView: View {
                     .font(SudoTheme.mono(size: 10))
                     .foregroundColor(SudoTheme.accent)
                     .buttonStyle(.plain)
+                    .accessibilityLabel("approve mcp request")
                 Button("[ reject ]") { engine.resolveMCPRequest(approved: false) }
                     .font(SudoTheme.mono(size: 10))
                     .foregroundColor(SudoTheme.error)
                     .buttonStyle(.plain)
+                    .accessibilityLabel("reject mcp request")
             }
         }
         .padding(.horizontal, SudoTheme.spacingMd)

@@ -11,8 +11,12 @@ struct ConfigView: View {
     @ObservedObject var pluginManager = PluginManager.shared
     let onBack: () -> Void
 
+    @ObservedObject var flasher = FirmwareFlasher.shared
+
     // Section toggles
     @State private var showRemap = false
+    @State private var showAutoSwitch = false
+    @State private var showSimpleMode = false
     @State private var showProfiles = false
     @State private var showMacros = false
     @State private var showAutoApprove = false
@@ -69,45 +73,59 @@ struct ConfigView: View {
                         if showRemap { remapContent }
                     }
 
-                    // 2. Per-app profiles
+                    // 2. Auto-switch
+                    section {
+                        SectionHeader("auto-switch", isExpanded: $showAutoSwitch,
+                                      badge: settings.autoSwitchEnabled ? "on" : nil)
+                        if showAutoSwitch { autoSwitchContent }
+                    }
+
+                    // 3. Simple mode + firmware
+                    section {
+                        SectionHeader("simple mode", isExpanded: $showSimpleMode,
+                                      badge: settings.isSimpleMode ? "active" : nil)
+                        if showSimpleMode { simpleModeContent }
+                    }
+
+                    // 4. Per-app profiles
                     section {
                         SectionHeader("per-app profiles", isExpanded: $showProfiles)
                         if showProfiles { profilesContent }
                     }
 
-                    // 3. Macros
+                    // 5. Macros
                     section {
                         SectionHeader("macros", isExpanded: $showMacros, count: settings.macros.count)
                         if showMacros { macrosContent }
                     }
 
-                    // 4. Auto-approve
+                    // 6. Auto-approve
                     section {
                         SectionHeader("auto-approve", isExpanded: $showAutoApprove,
                                       badge: settings.autoApproveEnabled ? "on" : nil)
                         if showAutoApprove { autoApproveContent }
                     }
 
-                    // 5. Settings (toggles + hotkeys)
+                    // 7. Settings (toggles + hotkeys)
                     section {
                         SectionHeader("settings", isExpanded: $showSettings)
                         if showSettings { settingsContent }
                     }
 
-                    // 6. Developer API
+                    // 8. Developer API
                     section {
                         SectionHeader("developer api", isExpanded: $showAPI,
                                       badge: apiServer.isRunning ? "on" : nil)
                         if showAPI { apiContent }
                     }
 
-                    // 7. History
+                    // 9. History
                     section {
                         SectionHeader("history", isExpanded: $showHistory, count: engine.actionLog.count)
                         if showHistory { historyContent }
                     }
 
-                    // 8. Plugins (conditional)
+                    // 10. Plugins (conditional)
                     if pluginManager.loadedPlugins.count > 0 {
                         section {
                             SectionHeader("plugins", isExpanded: .constant(true), count: pluginManager.loadedPlugins.count)
@@ -119,7 +137,7 @@ struct ConfigView: View {
                         }
                     }
 
-                    // 9. Terminal (dev only)
+                    // 11. Terminal (dev only)
                     if isDeveloperMode {
                         section {
                             SectionHeader("terminal", isExpanded: $showTerminal,
@@ -183,6 +201,29 @@ struct ConfigView: View {
         SettingToggle(label: "notify on failure", isOn: $settings.notifyOnFailure)
         SettingToggle(label: "launch at login", isOn: $settings.launchAtLogin)
         SettingToggle(label: "anonymous telemetry", isOn: $settings.telemetryEnabled)
+
+        SudoDivider()
+
+        // Debounce
+        HStack {
+            Text("debounce:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+            Text("\(Int(settings.debounceDuration * 1000))ms")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.text)
+                .frame(width: 36)
+            Spacer()
+            Button("-") {
+                settings.debounceDuration = max(0.01, settings.debounceDuration - 0.01)
+            }.font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+            Button("+") {
+                settings.debounceDuration = min(0.5, settings.debounceDuration + 0.01)
+            }.font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+            Button("reset") {
+                settings.debounceDuration = 0.02
+            }.font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+        }
 
         SudoDivider()
 
@@ -378,6 +419,247 @@ struct ConfigView: View {
                     ))
                     Spacer()
                 }
+            }
+        }
+    }
+
+    // MARK: - Auto-Switch
+
+    @ViewBuilder
+    private var autoSwitchContent: some View {
+        Text("automatically switches button preset when the focused app changes category")
+            .font(SudoTheme.mono(size: 8))
+            .foregroundColor(SudoTheme.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+
+        SettingToggle(label: "auto-switch on app focus", isOn: Binding(
+            get: { settings.autoSwitchEnabled },
+            set: { settings.autoSwitchEnabled = $0 }
+        ))
+
+        if let status = engine.autoSwitchStatus {
+            Text(status)
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(SudoTheme.accent)
+        }
+
+        if settings.autoSwitchEnabled {
+            SudoDivider()
+
+            Text("category → preset:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+
+            ForEach(AppCategory.allCases.filter { $0 != .unknown }, id: \.rawValue) { category in
+                let presetID = settings.categoryPresets[category.rawValue]
+                let presetName = ButtonPreset.all.first(where: { $0.id == presetID })?.name.lowercased() ?? "none"
+                let isActive = engine.currentCategory == category
+
+                HStack {
+                    if isActive {
+                        Text("●")
+                            .font(SudoTheme.mono(size: 6))
+                            .foregroundColor(SudoTheme.accent)
+                            .frame(width: 10)
+                    } else {
+                        Spacer().frame(width: 10)
+                    }
+                    Text(category.displayName)
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(isActive ? SudoTheme.text : SudoTheme.textMuted)
+                        .frame(width: 90, alignment: .leading)
+                    Text("→")
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.border)
+                    Text(presetName)
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.text)
+                        .lineLimit(1)
+                    Spacer()
+                    // Cycle through available presets
+                    Button("change") {
+                        cyclePreset(for: category)
+                    }
+                    .font(SudoTheme.mono(size: 7))
+                    .foregroundColor(SudoTheme.accent)
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Button("reset all to defaults") {
+                settings.categoryPresets = SudoSettings.defaultCategoryPresets()
+            }
+            .font(SudoTheme.mono(size: 8))
+            .foregroundColor(SudoTheme.textMuted)
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func cyclePreset(for category: AppCategory) {
+        let allPresets = ButtonPreset.all
+        let currentID = settings.categoryPresets[category.rawValue]
+        let currentIdx = allPresets.firstIndex(where: { $0.id == currentID }) ?? -1
+        let nextIdx = (currentIdx + 1) % allPresets.count
+        settings.categoryPresets[category.rawValue] = allPresets[nextIdx].id
+    }
+
+    // MARK: - Simple Mode + Firmware
+
+    @ViewBuilder
+    private var simpleModeContent: some View {
+        // Explanation
+        VStack(alignment: .leading, spacing: 4) {
+            Text("what is simple mode?")
+                .font(SudoTheme.mono(size: 9, weight: .bold))
+                .foregroundColor(SudoTheme.text)
+            Text("when all 4 buttons use keyboard shortcuts or media keys (not AI search), the pad can be flashed to work natively on any computer — no companion app needed.")
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(SudoTheme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        // Status
+        HStack {
+            Text("status:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+            Text(settings.isSimpleMode ? "active — all buttons are simple" : "inactive — some buttons use AI search")
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(settings.isSimpleMode ? SudoTheme.accent : SudoTheme.textMuted)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if !settings.isSimpleMode {
+            Text("switch all buttons to keyCombo or mediaKey mode in button remapping (use shortcuts, media, browsing, or discord preset)")
+                .font(SudoTheme.mono(size: 7))
+                .foregroundColor(SudoTheme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        SudoDivider()
+
+        // Firmware flashing
+        Text("flash firmware:")
+            .font(SudoTheme.mono(size: 9, weight: .bold))
+            .foregroundColor(SudoTheme.text)
+
+        Text("flash your pad so it works without the app. hold BOOTSEL while plugging in USB to enter bootloader mode.")
+            .font(SudoTheme.mono(size: 8))
+            .foregroundColor(SudoTheme.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+
+        // Firmware profiles
+        ForEach(FirmwareFlasher.profiles) { profile in
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(profile.name)
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.text)
+                    Text(profile.description)
+                        .font(SudoTheme.mono(size: 7))
+                        .foregroundColor(SudoTheme.textMuted)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Button("flash") {
+                    flasher.flash(profile: profile)
+                }
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(flasher.bootloaderDetected ? SudoTheme.accent : SudoTheme.surface)
+                .buttonStyle(.plain)
+                .disabled(!flasher.bootloaderDetected)
+            }
+            .padding(.vertical, 2)
+        }
+
+        SudoDivider()
+
+        // Flash status
+        flashStatusView
+
+        // Detect button
+        HStack {
+            Button("[ detect device ]") {
+                flasher.detectBootloader()
+            }
+            .font(SudoTheme.mono(size: 9))
+            .foregroundColor(SudoTheme.accent)
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            if flasher.bootloaderDetected {
+                Text("rpi-rp2 found")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.accent)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var flashStatusView: some View {
+        switch flasher.state {
+        case .idle:
+            EmptyView()
+        case .detectingDevice:
+            HStack {
+                Text("scanning for bootloader...")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
+                Spacer()
+            }
+        case .deviceFound(let path):
+            HStack {
+                Text("device ready at \(path)")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.accent)
+                    .lineLimit(1)
+                Spacer()
+            }
+        case .flashing(let progress):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 10, height: 10)
+                    Text(progress)
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                }
+                // Animated flash bar
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(SudoTheme.accent)
+                        .frame(width: geo.size.width * 0.6)
+                        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: flasher.state)
+                }
+                .frame(height: 2)
+            }
+            .padding(.vertical, 4)
+        case .success:
+            HStack {
+                Text("firmware flashed successfully — device will reboot")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.accent)
+                Spacer()
+                Button("ok") { flasher.reset() }
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.accent)
+                    .buttonStyle(.plain)
+            }
+        case .error(let message):
+            HStack {
+                Text(message)
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.error)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("dismiss") { flasher.reset() }
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
+                    .buttonStyle(.plain)
             }
         }
     }

@@ -49,6 +49,40 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(telemetryEnabled, forKey: "telemetryEnabled") }
     }
 
+    /// Debounce duration in seconds (default 0.02 = 20ms)
+    @Published var debounceDuration: Double {
+        didSet { defaults.set(debounceDuration, forKey: "debounceDuration") }
+    }
+
+    /// Auto-switch presets when the frontmost app changes category
+    @Published var autoSwitchEnabled: Bool {
+        didSet { defaults.set(autoSwitchEnabled, forKey: "autoSwitchEnabled") }
+    }
+
+    /// Maps app category → preset ID (e.g. "media" → "media", "cad" → "cad")
+    @Published var categoryPresets: [String: String] {
+        didSet { defaults.set(categoryPresets, forKey: "categoryPresets") }
+    }
+
+    /// Simple mode: all buttons use keyCombo or mediaKey (no AI search needed).
+    /// When enabled, the pad can be flashed to work natively without the companion app.
+    var isSimpleMode: Bool {
+        PadAction.allCases.allSatisfy { action in
+            let mode = actionMode(for: action)
+            return mode == .keyCombo || mode == .mediaKey
+        }
+    }
+
+    /// Developer mode: enabled when ~/sudo-app/build.sh exists
+    var isDeveloperMode: Bool {
+        FileManager.default.fileExists(atPath: NSHomeDirectory() + "/sudo-app/build.sh")
+    }
+
+    /// Persisted section expansion state for ConfigView
+    @Published var expandedSections: Set<String> {
+        didSet { defaults.set(Array(expandedSections), forKey: "expandedSections") }
+    }
+
     /// Action mode per button (aiSearch, keyCombo, mediaKey)
     @Published var buttonModes: [String: String] {
         didSet { defaults.set(buttonModes, forKey: "buttonModes") }
@@ -158,6 +192,10 @@ final class SudoSettings: ObservableObject {
         self.apiPort = defaults.object(forKey: "apiPort") == nil ? 7483 : defaults.integer(forKey: "apiPort")
         self.apiKey = defaults.string(forKey: "apiKey") ?? Self.generateAPIKey()
         self.telemetryEnabled = defaults.object(forKey: "telemetryEnabled") == nil ? true : defaults.bool(forKey: "telemetryEnabled")
+        self.debounceDuration = defaults.object(forKey: "debounceDuration") == nil ? 0.02 : defaults.double(forKey: "debounceDuration")
+        self.autoSwitchEnabled = defaults.object(forKey: "autoSwitchEnabled") == nil ? true : defaults.bool(forKey: "autoSwitchEnabled")
+        self.categoryPresets = (defaults.dictionary(forKey: "categoryPresets") as? [String: String]) ?? Self.defaultCategoryPresets()
+        self.expandedSections = Set(defaults.stringArray(forKey: "expandedSections") ?? [])
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
         self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]
@@ -188,6 +226,16 @@ final class SudoSettings: ObservableObject {
         } else {
             self.macros = Self.defaultMacros()
         }
+    }
+
+    static func defaultCategoryPresets() -> [String: String] {
+        var presets: [String: String] = [:]
+        for category in AppCategory.allCases {
+            if let presetID = category.defaultPresetID {
+                presets[category.rawValue] = presetID
+            }
+        }
+        return presets
     }
 
     static func defaultAutoApproveRules() -> [AutoApproveRule] {

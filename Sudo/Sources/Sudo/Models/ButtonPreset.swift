@@ -37,14 +37,22 @@ struct ButtonPreset: Identifiable {
         static let c: UInt16 = 8
         static let v: UInt16 = 9
         static let z: UInt16 = 6
+        static let s: UInt16 = 1
+        static let b: UInt16 = 11
+        static let i: UInt16 = 34
+        static let m: UInt16 = 46
         static let w: UInt16 = 13
         static let r: UInt16 = 15
         static let t: UInt16 = 17
+        static let space: UInt16 = 49
+        static let backslash: UInt16 = 42
+        static let e: UInt16 = 14
         static let leftBracket: UInt16 = 33   // [
         static let rightBracket: UInt16 = 30  // ]
         static let three: UInt16 = 20
         static let four: UInt16 = 21
         static let f1: UInt16 = 122
+        static let f6: UInt16 = 97
     }
 
     /// All available presets
@@ -56,6 +64,11 @@ struct ButtonPreset: Identifiable {
         mediaControls,
         browsing,
         discord,
+        cad,
+        videoEditing,
+        writing,
+        communication,
+        design,
     ]
 
     // MARK: - Presets
@@ -153,7 +166,7 @@ struct ButtonPreset: Identifiable {
     static let mediaControls = ButtonPreset(
         id: "media",
         name: "Media Controls",
-        description: "play / next / prev / mute",
+        description: "play / next / prev / like",
         buttons: [
             .approve: .init(displayName: "Play / Pause", searchTerms: [], mode: .mediaKey,
                            keyCombo: KeyCombo(keyCode: 16, modifiers: [])),  // NX_KEYTYPE_PLAY
@@ -161,8 +174,10 @@ struct ButtonPreset: Identifiable {
                           keyCombo: KeyCombo(keyCode: 17, modifiers: [])),   // NX_KEYTYPE_NEXT
             .action3: .init(displayName: "Previous Track", searchTerms: [], mode: .mediaKey,
                            keyCombo: KeyCombo(keyCode: 18, modifiers: [])),  // NX_KEYTYPE_PREVIOUS
-            .action4: .init(displayName: "Mute", searchTerms: [], mode: .mediaKey,
-                           keyCombo: KeyCombo(keyCode: 7, modifiers: [])),   // NX_KEYTYPE_MUTE
+            .action4: .init(displayName: "Like / Star", searchTerms: [
+                "Love", "Like", "Favorite", "Heart", "Star",
+                "Add to Favorites", "Add to Library",
+            ]),
         ]
     )
 
@@ -195,6 +210,96 @@ struct ButtonPreset: Identifiable {
                            keyCombo: KeyCombo(keyCode: 20, modifiers: [.maskControl, .maskShift])),  // Ctrl+Shift+3
             .action4: .init(displayName: "Mute / Deafen", searchTerms: [], mode: .keyCombo,
                            keyCombo: KeyCombo(keyCode: 2, modifiers: [.maskCommand, .maskShift])),   // Cmd+Shift+D (Discord mute)
+        ]
+    )
+
+    // MARK: - Category Presets
+
+    static let cad = ButtonPreset(
+        id: "cad",
+        name: "CAD Shortcuts",
+        description: "undo / redo / save / fit view",
+        buttons: [
+            .approve: .init(displayName: "Undo", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.z, modifiers: .maskCommand)),
+            .reject: .init(displayName: "Redo", searchTerms: [], mode: .keyCombo,
+                          keyCombo: KeyCombo(keyCode: KeyCombo.z, modifiers: [.maskCommand, .maskShift])),
+            .action3: .init(displayName: "Save", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.s, modifiers: .maskCommand)),
+            .action4: .init(displayName: "Fit View", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.f6, modifiers: [])),
+        ]
+    )
+
+    static let videoEditing = ButtonPreset(
+        id: "video-editing",
+        name: "Video Editing",
+        description: "undo / redo / play-stop / mark",
+        buttons: [
+            .approve: .init(displayName: "Undo", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.z, modifiers: .maskCommand)),
+            .reject: .init(displayName: "Redo", searchTerms: [], mode: .keyCombo,
+                          keyCombo: KeyCombo(keyCode: KeyCombo.z, modifiers: [.maskCommand, .maskShift])),
+            .action3: .init(displayName: "Play / Stop", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.space, modifiers: [])),
+            .action4: .init(displayName: "Mark In", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.i, modifiers: [])),
+        ]
+    )
+
+    static let writing = ButtonPreset(
+        id: "writing",
+        name: "Writing Tools",
+        description: "undo / bold / italic / save",
+        buttons: [
+            .approve: .init(displayName: "Undo", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.z, modifiers: .maskCommand)),
+            .reject: .init(displayName: "Bold", searchTerms: [], mode: .keyCombo,
+                          keyCombo: KeyCombo(keyCode: KeyCombo.b, modifiers: .maskCommand)),
+            .action3: .init(displayName: "Italic", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.i, modifiers: .maskCommand)),
+            .action4: .init(displayName: "Save", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.s, modifiers: .maskCommand)),
+        ]
+    )
+
+    static let communication = ButtonPreset(
+        id: "communication",
+        name: "Communication",
+        description: "mute / camera / react / leave",
+        buttons: [
+            .approve: .init(displayName: "Mute / Unmute", searchTerms: [
+                "Mute", "Unmute", "Toggle mute", "Mute audio",
+                "Unmute audio", "Mute microphone",
+            ]),
+            .reject: .init(displayName: "Camera On/Off", searchTerms: [
+                "Camera", "Video", "Start Video", "Stop Video",
+                "Turn on camera", "Turn off camera",
+            ]),
+            .action3: .init(displayName: "React", searchTerms: [
+                "React", "Thumbs up", "Raise hand", "Raise Hand",
+                "Reactions", "Emoji",
+            ]),
+            .action4: .init(displayName: "Leave", searchTerms: [
+                "Leave", "End", "Hang up", "End call",
+                "Leave meeting", "Disconnect", "End Meeting",
+            ]),
+        ]
+    )
+
+    static let design = ButtonPreset(
+        id: "design",
+        name: "Design Tools",
+        description: "undo / redo / preview / export",
+        buttons: [
+            .approve: .init(displayName: "Undo", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.z, modifiers: .maskCommand)),
+            .reject: .init(displayName: "Redo", searchTerms: [], mode: .keyCombo,
+                          keyCombo: KeyCombo(keyCode: KeyCombo.z, modifiers: [.maskCommand, .maskShift])),
+            .action3: .init(displayName: "Preview", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.backslash, modifiers: .maskCommand)),
+            .action4: .init(displayName: "Export", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: KeyCombo.e, modifiers: [.maskCommand, .maskShift])),
         ]
     )
 

@@ -14,7 +14,11 @@ final class ActionExecutor {
         switch result {
         case .found(let element, _):
             return performAXPress(element: element)
-        case .foundOCR(let point, _):
+        case .foundOCR(let point, let method):
+            if method == .automation {
+                // Automation already clicked — nothing to do
+                return .success(method: "Automation (pre-clicked)")
+            }
             return performClickAtPoint(point)
         case .notFound(let reason):
             return .failure(reason: reason)

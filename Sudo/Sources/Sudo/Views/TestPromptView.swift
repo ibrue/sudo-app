@@ -3,6 +3,9 @@ import SwiftUI
 /// A fake AI agent permission prompt for testing the sudo app.
 /// Opens as a separate window with Allow/Deny buttons that the
 /// sudo engine can detect and click via accessibility tree.
+///
+/// Note: Button labels use Title Case intentionally — they simulate real app
+/// buttons (e.g. "Allow", "Deny") which is what the AX finder searches for.
 struct TestPromptView: View {
     @State private var log: [String] = []
     @State private var promptCount = 1
@@ -12,80 +15,80 @@ struct TestPromptView: View {
             // Header
             HStack {
                 Text("[sudo] test prompt")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x00FF41))
+                    .font(SudoTheme.mono(size: 13, weight: .bold))
+                    .foregroundColor(SudoTheme.accent)
                 Spacer()
                 Text("prompt #\(promptCount)")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x666666))
+                    .font(SudoTheme.mono(size: 11))
+                    .foregroundColor(SudoTheme.textMuted)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
-            Rectangle().fill(Color(hex: 0x1E1E1E)).frame(height: 1)
+            SudoDivider()
 
             // Fake agent request
             VStack(alignment: .leading, spacing: 8) {
                 Text("$ claude agent wants to execute:")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x666666))
+                    .font(SudoTheme.mono(size: 11))
+                    .foregroundColor(SudoTheme.textMuted)
 
                 Text("  read_file(\"/Users/you/project/config.json\")")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(Color(hex: 0xF0F0F0))
+                    .font(SudoTheme.mono(size: 12))
+                    .foregroundColor(SudoTheme.text)
 
                 Text("This will read a file from your filesystem.")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x666666))
+                    .font(SudoTheme.mono(size: 11))
+                    .foregroundColor(SudoTheme.textMuted)
                     .padding(.top, 4)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Rectangle().fill(Color(hex: 0x1E1E1E)).frame(height: 1)
+            SudoDivider()
 
-            // Permission buttons
+            // Permission buttons — Title Case intentional (simulates real app buttons)
             HStack(spacing: 12) {
                 Button("Allow") {
                     log.append("[\(timestamp())] Allow clicked (manually)")
                     promptCount += 1
                 }
-                .buttonStyle(TestButtonStyle(color: Color(hex: 0x00FF41)))
+                .buttonStyle(TestButtonStyle(color: SudoTheme.accent))
                 .accessibilityLabel("Allow")
 
                 Button("Allow Once") {
                     log.append("[\(timestamp())] Allow Once clicked (manually)")
                     promptCount += 1
                 }
-                .buttonStyle(TestButtonStyle(color: Color(hex: 0x00FF41)))
+                .buttonStyle(TestButtonStyle(color: SudoTheme.accent))
                 .accessibilityLabel("Allow Once")
 
                 Button("Deny") {
                     log.append("[\(timestamp())] Deny clicked (manually)")
                     promptCount += 1
                 }
-                .buttonStyle(TestButtonStyle(color: Color(hex: 0xFF3333)))
+                .buttonStyle(TestButtonStyle(color: SudoTheme.error))
                 .accessibilityLabel("Deny")
             }
             .padding(16)
 
-            Rectangle().fill(Color(hex: 0x1E1E1E)).frame(height: 1)
+            SudoDivider()
 
             // Action log
             VStack(alignment: .leading, spacing: 4) {
                 Text("> action log")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Color(hex: 0x666666))
+                    .font(SudoTheme.mono(size: 10))
+                    .foregroundColor(SudoTheme.textMuted)
 
                 if log.isEmpty {
                     Text("Waiting for sudo to press a button...")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Color(hex: 0x666666))
+                        .font(SudoTheme.mono(size: 10))
+                        .foregroundColor(SudoTheme.textMuted)
                 } else {
                     ForEach(log.suffix(5), id: \.self) { entry in
                         Text(entry)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Color(hex: 0x00FF41))
+                            .font(SudoTheme.mono(size: 10))
+                            .foregroundColor(SudoTheme.accent)
                     }
                 }
             }
@@ -95,7 +98,7 @@ struct TestPromptView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(hex: 0x0A0A0A))
+        .background(SudoTheme.bg)
     }
 
     private func timestamp() -> String {
@@ -110,8 +113,8 @@ struct TestButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .medium, design: .monospaced))
-            .foregroundColor(configuration.isPressed ? Color(hex: 0x0A0A0A) : color)
+            .font(SudoTheme.mono(size: 12, weight: .medium))
+            .foregroundColor(configuration.isPressed ? SudoTheme.bg : color)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(configuration.isPressed ? color : Color.clear)

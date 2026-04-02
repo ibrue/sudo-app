@@ -51,10 +51,14 @@
 
 ## Architecture
 - `SudoEngine` — central orchestrator, owns detection → execution pipeline
-- `AppDetector` — identifies frontmost app via bundle ID or browser tab
-- `AXButtonFinder` — walks accessibility tree to find buttons (primary, 30-level depth)
+- `AppDetector` — identifies frontmost app via bundle ID or browser tab, returns AppCategory
+- `AppCategory` — enum: ai, terminal, browser, media, cad, videoEditing, writing, communication, design, unknown
+- `AXButtonFinder` — walks accessibility tree to find buttons (primary, 30-level depth), tracks SearchStats
+- `AXInspector` — debug tool: tree dumps, search dry-runs, pipeline tests (exposed via /debug/ endpoints)
+- `AutomationButtonFinder` — AppleScript via System Events for hard-to-reach buttons (sheets, alerts, nested dialogs)
 - `OCRButtonFinder` — Vision framework screenshot OCR (fallback)
 - `ActionExecutor` — presses buttons via AXPress or CGEvent click (with center-click fallback)
+- `FirmwareFlasher` — detects RP2040 bootloader, copies UF2 firmware for simple mode presets
 - `HotkeyListener` — configurable CGEvent tap (default: Ctrl+Shift+F13–F16)
 - `LocalAPIServer` — HTTP API on port 7483 + MCP server endpoints
 - `WebhookManager` — fires POST to user-configured URL on each action
@@ -62,7 +66,7 @@
 - `BugReporter` — collects diagnostics and POSTs to sudo.supply/api/bugs
 - `SudoSettings` — persisted preferences singleton (UserDefaults)
 - `PadAction` — enum mapping 4 buttons to actions, delegates to settings for display names / search terms
-- `ButtonPreset` — quick-apply configurations with 3 modes: aiSearch, keyCombo, mediaKey
+- `ButtonPreset` — quick-apply configs (12 presets: ai-agent, plan-mode, claude-code, shortcuts, media, browsing, discord, cad, video-editing, writing, communication, design)
 - `MacroSequence` — chained actions with delays, assignable to buttons
 - `AutoApproveRule` — rules engine for automatic approval with safety exclusions
 - `RulesEngine` — evaluates auto-approve rules against app + context
@@ -73,22 +77,45 @@
 
 ## Action Pipeline
 1. HotkeyListener receives keypress → dispatches to background queue
-2. Debounce check (100ms)
+2. Debounce check (configurable, default 20ms)
 3. Macro check (if button has assigned macro, execute sequence)
 4. Mode check:
    - `keyCombo` → send keyboard shortcut directly, done
    - `mediaKey` → send media key event, done
    - `aiSearch` → continue to detection pipeline
 5. App detection (frontmost app, or all apps if search-all enabled)
-6. AX tree search (3s timeout) → OCR fallback (3s timeout) → keyboard fallback (editors only)
+6. AX tree search (3s timeout) → Automation/AppleScript (3s timeout) → OCR fallback (3s timeout) → keyboard fallback (editors only)
 7. Execute action (AXPress → center click fallback)
 8. Finish: update UI, sound, webhook, telemetry, LED, notification
 
 ## Permissions
 - Accessibility required for hotkey listener + AX tree reading
+- Automation (System Events) required for AutomationButtonFinder — reaches sheets, alerts, nested dialogs
 - Permission check runs every 3s until connected, auto-retries event tap
 - `isConnected` = hotkey event tap successfully created (no AX test needed)
 - Screen Recording permission needed for OCR fallback only
+
+## Auto-Profile Switching
+- `SudoSettings.autoSwitchEnabled` (default: true) — auto-applies preset when frontmost app changes category
+- `SudoSettings.categoryPresets: [String: String]` — maps category.rawValue → preset ID
+- `AppCategory.from(bundleID:appName:)` — detects category from bundle ID, falls back to name substring matching
+- `SudoEngine.handleAutoSwitch()` — called from `updateDetectedApp()`, applies preset if category changed
+- `SudoEngine.autoSwitchStatus` — transient UI notification ("→ media controls"), clears after 3s
+- Won't re-apply same preset (tracked via `lastAppliedPresetID`)
+
+## Debug API Endpoints (requires X-API-Key header)
+- `GET /debug/ax-tree` — dump AX tree of frontmost app as JSON (depth 8)
+- `GET /debug/ax-tree?pid=N` — dump AX tree of specific PID
+- `GET /debug/ax-search?terms=Allow,Approve` — dry-run search for terms in frontmost app
+- `GET /debug/pipeline-test?action=approve` — run full detection pipeline, return detailed report with timings
+
+## Simple Mode & Firmware Flashing
+- Simple mode = all 4 buttons use keyCombo or mediaKey (no aiSearch)
+- `SudoSettings.isSimpleMode` computed property checks all button modes
+- When simple mode is active, pad can be flashed to work natively without companion app
+- `FirmwareFlasher` detects RP2040 bootloader (RPI-RP2 USB volume) and copies UF2 files
+- Pre-built firmware profiles for each preset (default, shortcuts, media, browsing, discord, custom)
+- UF2 files looked up in: bundle resources → ~/Library/Application Support/Sudo/Firmware/
 
 ## Build
 ```bash
@@ -98,6 +125,34 @@ cp -r dist/Sudo.app /Applications/
 ```
 Version is read from `OTAUpdater.currentVersion` (single source of truth).
 Build script reads version from Swift source via grep.
+
+## UI Audit Progress (from session 2026-04-02)
+
+A full UI audit identified 17 issues across critical/high/medium/low severity.
+
+### Completed (7/17):
+1. **Notification overflow** — MainView: auto-switch notification now has `.lineLimit(1).truncationMode(.tail)`
+2. **Status truncation** — MainView: app name uses `.truncationMode(.middle)` to prevent squishing
+3. **Version squish** — MainView: footer uses `.layoutPriority(1)` so version text doesn't compress
+4. **Accessibility labels** — MainView, MenuBarHelpers: all interactive elements have `.accessibilityLabel`
+5. **Dead StatusRow component** — MenuBarHelpers: removed unused `StatusRow` view
+6. **Missing aiSearch indicator** — MenuBarHelpers: `DeviceButton` shows `"◉"` for aiSearch mode
+7. **Hardcoded colors in TestPromptView** — All `Color(hex:)` calls replaced with `SudoTheme.*` references
+8. **isDeveloperMode** — SudoSettings: added computed property, removed global variable from MenuBarHelpers
+
+### Remaining (ConfigView.swift — needs full rewrite):
+9. **Auto-approve rule editor** — Currently just toggles; needs fields to edit appFilter, contextContains, contextExcludes
+10. **Macro editor** — Currently just a list; needs add/remove steps, assign to button, delete macro
+11. **Preset picker** — Replace "change" cycling button with a proper picker/menu
+12. **Persist section expansion** — Bind section collapsed/expanded state to `settings.expandedSections`
+13. **Terminal height** — Increase from 150pt to 200pt
+14. **Condense simple mode text** — Current explanation is too verbose
+15. **isDeveloperMode in ConfigView** — Replace remaining `isDeveloperMode` references with `SudoSettings.shared.isDeveloperMode`
+16. **Accessibility labels in ConfigView** — Add labels to all interactive elements
+17. **Button name editing UX** — Inline text fields for renaming buttons
+
+### How to continue:
+The ConfigView.swift rewrite is the main remaining task. Read the current file (793 lines), then rewrite it incorporating fixes #9-17 above. After that, commit and push.
 
 ## Common Issues
 - `CGEventFlags` requires `import CoreGraphics` in any file using it
