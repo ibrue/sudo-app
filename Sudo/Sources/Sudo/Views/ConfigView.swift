@@ -13,17 +13,13 @@ struct ConfigView: View {
 
     @ObservedObject var flasher = FirmwareFlasher.shared
 
-    // Section toggles
-    @State private var showRemap = false
-    @State private var showAutoSwitch = false
-    @State private var showSimpleMode = false
-    @State private var showProfiles = false
-    @State private var showMacros = false
-    @State private var showAutoApprove = false
-    @State private var showSettings = false
-    @State private var showAPI = false
-    @State private var showHistory = false
-    @State private var showTerminal = false
+    // Section toggles — persisted across popover open/close via SudoSettings.expandedSections
+    private func sectionBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { settings.expandedSections.contains(key) },
+            set: { if $0 { settings.expandedSections.insert(key) } else { settings.expandedSections.remove(key) } }
+        )
+    }
 
     // Editing state
     @State private var editingAction: PadAction? = nil
@@ -49,6 +45,7 @@ struct ConfigView: View {
                         .foregroundColor(SudoTheme.accent)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("back to main view")
                 Spacer()
                 Text("settings")
                     .font(SudoTheme.mono(size: 12, weight: .bold))
@@ -69,60 +66,60 @@ struct ConfigView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // 1. Button remapping
                     section {
-                        SectionHeader("button remapping", isExpanded: $showRemap)
-                        if showRemap { remapContent }
+                        SectionHeader("button remapping", isExpanded: sectionBinding("remap"))
+                        if settings.expandedSections.contains("remap") { remapContent }
                     }
 
                     // 2. Auto-switch
                     section {
-                        SectionHeader("auto-switch", isExpanded: $showAutoSwitch,
+                        SectionHeader("auto-switch", isExpanded: sectionBinding("autoswitch"),
                                       badge: settings.autoSwitchEnabled ? "on" : nil)
-                        if showAutoSwitch { autoSwitchContent }
+                        if settings.expandedSections.contains("autoswitch") { autoSwitchContent }
                     }
 
                     // 3. Simple mode + firmware
                     section {
-                        SectionHeader("simple mode", isExpanded: $showSimpleMode,
+                        SectionHeader("simple mode", isExpanded: sectionBinding("simplemode"),
                                       badge: settings.isSimpleMode ? "active" : nil)
-                        if showSimpleMode { simpleModeContent }
+                        if settings.expandedSections.contains("simplemode") { simpleModeContent }
                     }
 
                     // 4. Per-app profiles
                     section {
-                        SectionHeader("per-app profiles", isExpanded: $showProfiles)
-                        if showProfiles { profilesContent }
+                        SectionHeader("per-app profiles", isExpanded: sectionBinding("profiles"))
+                        if settings.expandedSections.contains("profiles") { profilesContent }
                     }
 
                     // 5. Macros
                     section {
-                        SectionHeader("macros", isExpanded: $showMacros, count: settings.macros.count)
-                        if showMacros { macrosContent }
+                        SectionHeader("macros", isExpanded: sectionBinding("macros"), count: settings.macros.count)
+                        if settings.expandedSections.contains("macros") { macrosContent }
                     }
 
                     // 6. Auto-approve
                     section {
-                        SectionHeader("auto-approve", isExpanded: $showAutoApprove,
+                        SectionHeader("auto-approve", isExpanded: sectionBinding("autoapprove"),
                                       badge: settings.autoApproveEnabled ? "on" : nil)
-                        if showAutoApprove { autoApproveContent }
+                        if settings.expandedSections.contains("autoapprove") { autoApproveContent }
                     }
 
                     // 7. Settings (toggles + hotkeys)
                     section {
-                        SectionHeader("settings", isExpanded: $showSettings)
-                        if showSettings { settingsContent }
+                        SectionHeader("settings", isExpanded: sectionBinding("settings"))
+                        if settings.expandedSections.contains("settings") { settingsContent }
                     }
 
                     // 8. Developer API
                     section {
-                        SectionHeader("developer api", isExpanded: $showAPI,
+                        SectionHeader("developer api", isExpanded: sectionBinding("api"),
                                       badge: apiServer.isRunning ? "on" : nil)
-                        if showAPI { apiContent }
+                        if settings.expandedSections.contains("api") { apiContent }
                     }
 
                     // 9. History
                     section {
-                        SectionHeader("history", isExpanded: $showHistory, count: engine.actionLog.count)
-                        if showHistory { historyContent }
+                        SectionHeader("history", isExpanded: sectionBinding("history"), count: engine.actionLog.count)
+                        if settings.expandedSections.contains("history") { historyContent }
                     }
 
                     // 10. Plugins (conditional)
@@ -138,11 +135,11 @@ struct ConfigView: View {
                     }
 
                     // 11. Terminal (dev only)
-                    if isDeveloperMode {
+                    if settings.isDeveloperMode {
                         section {
-                            SectionHeader("terminal", isExpanded: $showTerminal,
+                            SectionHeader("terminal", isExpanded: sectionBinding("terminal"),
                                           count: rebuilder.buildLog.isEmpty ? nil : rebuilder.buildLog.count)
-                            if showTerminal { terminalContent }
+                            if settings.expandedSections.contains("terminal") { terminalContent }
                         }
                     }
                 }
@@ -152,7 +149,7 @@ struct ConfigView: View {
 
             // Footer
             HStack(spacing: 8) {
-                if isDeveloperMode {
+                if settings.isDeveloperMode {
                     Button(rebuilder.isRebuilding ? rebuilder.status : "pull & rebuild") {
                         rebuilder.rebuild()
                     }
@@ -251,6 +248,7 @@ struct ConfigView: View {
             .font(SudoTheme.mono(size: 8))
             .foregroundColor(SudoTheme.textMuted)
             .buttonStyle(.plain)
+            .accessibilityLabel("reset hotkey bindings to defaults")
     }
 
     // MARK: - Button remapping
@@ -279,6 +277,7 @@ struct ConfigView: View {
                 .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("apply \(preset.name.lowercased()) preset")
         }
 
         SudoDivider()
@@ -383,43 +382,199 @@ struct ConfigView: View {
         }
     }
 
-    // MARK: - Macros (simplified)
+    // MARK: - Macros
 
     @ViewBuilder
     private var macrosContent: some View {
-        ForEach(settings.macros) { macro in
-            HStack {
-                Text(macro.name.lowercased()).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.text)
-                Text("(\(macro.steps.count) steps)").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted)
-                Spacer()
-                if let assigned = macro.assignedButton {
-                    let action = PadAction.allCases.first(where: { $0.rawValue == assigned })
-                    Text("button \(action?.buttonNumber ?? 0)").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent)
+        ForEach(Array(settings.macros.enumerated()), id: \.element.id) { index, macro in
+            VStack(alignment: .leading, spacing: 4) {
+                // Header row
+                HStack {
+                    Text(macro.name.lowercased())
+                        .font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.text)
+                    Text("(\(macro.steps.count))")
+                        .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted)
+                    Spacer()
+                    if let assigned = macro.assignedButton,
+                       let action = PadAction.allCases.first(where: { $0.rawValue == assigned }) {
+                        Text("btn \(action.buttonNumber)")
+                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent)
+                    }
+                    if editingMacroID == macro.id {
+                        Button("done") { editingMacroID = nil }
+                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                    } else {
+                        Button("edit") { editingMacroID = macro.id }
+                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                        Button("del") { settings.macros.remove(at: index) }
+                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                    }
+                }
+
+                // Inline editor
+                if editingMacroID == macro.id {
+                    VStack(alignment: .leading, spacing: 4) {
+                        // Name field
+                        HStack(spacing: 4) {
+                            Text("name").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted).frame(width: 36, alignment: .trailing)
+                            TextField("macro name", text: Binding(
+                                get: { settings.macros[index].name },
+                                set: { settings.macros[index].name = $0 }
+                            ))
+                            .font(SudoTheme.mono(size: 8)).textFieldStyle(.plain).foregroundColor(SudoTheme.text)
+                            .padding(2).overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                        }
+
+                        // Assign to button
+                        HStack(spacing: 4) {
+                            Text("button").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted).frame(width: 36, alignment: .trailing)
+                            ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
+                                let isAssigned = settings.macros[index].assignedButton == action.rawValue
+                                Button("\(action.buttonNumber)") {
+                                    settings.macros[index].assignedButton = isAssigned ? nil : action.rawValue
+                                }
+                                .font(SudoTheme.mono(size: 8, weight: isAssigned ? .bold : .regular))
+                                .foregroundColor(isAssigned ? SudoTheme.accent : SudoTheme.textMuted)
+                                .buttonStyle(.plain)
+                                .frame(width: 18)
+                            }
+                            Button("none") { settings.macros[index].assignedButton = nil }
+                                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+                        }
+
+                        // Steps list
+                        Text("steps:").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted)
+                        ForEach(Array(macro.steps.enumerated()), id: \.element.id) { stepIdx, step in
+                            HStack(spacing: 4) {
+                                Text("\(stepIdx + 1).")
+                                    .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted).frame(width: 14)
+                                Text(step.padAction?.defaultDisplayName.lowercased() ?? step.action)
+                                    .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.text)
+                                Text("+ \(String(format: "%.1f", step.delayAfter))s")
+                                    .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted)
+                                Spacer()
+                                Button("✕") {
+                                    settings.macros[index].steps.remove(at: stepIdx)
+                                }
+                                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                            }
+                        }
+
+                        // Add step buttons
+                        HStack(spacing: 4) {
+                            Text("add:").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted)
+                            ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
+                                Button(action.defaultDisplayName.lowercased().components(separatedBy: " ").first ?? action.rawValue) {
+                                    let step = MacroStep(action: action, delayAfter: 1.0)
+                                    settings.macros[index].steps.append(step)
+                                }
+                                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(6)
+                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
                 }
             }
         }
+
+        Button("+ add macro") {
+            let macro = MacroSequence(name: "new macro", steps: [])
+            settings.macros.append(macro)
+            editingMacroID = macro.id
+        }
+        .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+        .accessibilityLabel("add macro")
     }
 
     // MARK: - Auto-approve
 
     @ViewBuilder
     private var autoApproveContent: some View {
-        Text("experimental — auto-presses approve when rules match")
+        Text("⚠ experimental — auto-presses approve when rules match")
             .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.error)
+            .fixedSize(horizontal: false, vertical: true)
         SettingToggle(label: "enable auto-approve", isOn: Binding(
             get: { settings.autoApproveEnabled },
             set: { settings.autoApproveEnabled = $0; engine.startAutoApproveTimer() }
         ))
-        if settings.autoApproveEnabled {
-            ForEach(Array(settings.autoApproveRules.enumerated()), id: \.element.id) { index, rule in
+
+        ForEach(Array(settings.autoApproveRules.enumerated()), id: \.element.id) { index, rule in
+            VStack(alignment: .leading, spacing: 4) {
+                // Toggle + name row
                 HStack {
                     SettingToggle(label: rule.name.lowercased(), isOn: Binding(
                         get: { settings.autoApproveRules[index].enabled },
                         set: { settings.autoApproveRules[index].enabled = $0 }
                     ))
                     Spacer()
+                    if editingRuleID == rule.id {
+                        Button("done") { editingRuleID = nil }
+                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                    } else {
+                        Button("edit") {
+                            editingRuleID = rule.id
+                            editRuleName = rule.name
+                            editRuleAppFilter = rule.appFilter ?? ""
+                            editRuleContextContains = rule.contextContains ?? ""
+                            editRuleContextExcludes = rule.contextExcludes ?? ""
+                        }
+                        .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                        Button("del") {
+                            settings.autoApproveRules.remove(at: index)
+                        }
+                        .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                    }
+                }
+
+                // Inline editor
+                if editingRuleID == rule.id {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ruleField("name", text: Binding(
+                            get: { editRuleName },
+                            set: { editRuleName = $0; settings.autoApproveRules[index].name = $0 }
+                        ))
+                        ruleField("app", text: Binding(
+                            get: { editRuleAppFilter },
+                            set: { editRuleAppFilter = $0; settings.autoApproveRules[index].appFilter = $0.isEmpty ? nil : $0 }
+                        ), hint: "bundle id substring, blank = all")
+                        ruleField("contains", text: Binding(
+                            get: { editRuleContextContains },
+                            set: { editRuleContextContains = $0; settings.autoApproveRules[index].contextContains = $0.isEmpty ? nil : $0 }
+                        ), hint: "only if context has this text")
+                        ruleField("excludes", text: Binding(
+                            get: { editRuleContextExcludes },
+                            set: { editRuleContextExcludes = $0; settings.autoApproveRules[index].contextExcludes = $0.isEmpty ? nil : $0 }
+                        ), hint: "never if context has this text")
+                    }
+                    .padding(6)
+                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
                 }
             }
+        }
+
+        Button("+ add rule") {
+            let rule = AutoApproveRule(name: "new rule")
+            settings.autoApproveRules.append(rule)
+            editingRuleID = rule.id
+            editRuleName = rule.name
+            editRuleAppFilter = ""
+            editRuleContextContains = ""
+            editRuleContextExcludes = ""
+        }
+        .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+        .accessibilityLabel("add auto-approve rule")
+    }
+
+    @ViewBuilder
+    private func ruleField(_ label: String, text: Binding<String>, hint: String = "") -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted)
+                .frame(width: 44, alignment: .trailing)
+            TextField(hint, text: text)
+                .font(SudoTheme.mono(size: 8)).textFieldStyle(.plain).foregroundColor(SudoTheme.text)
+                .padding(2).overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
         }
     }
 
@@ -471,18 +626,25 @@ struct ConfigView: View {
                     Text("→")
                         .font(SudoTheme.mono(size: 8))
                         .foregroundColor(SudoTheme.border)
-                    Text(presetName)
                         .font(SudoTheme.mono(size: 8))
                         .foregroundColor(SudoTheme.text)
                         .lineLimit(1)
                     Spacer()
-                    // Cycle through available presets
-                    Button("change") {
-                        cyclePreset(for: category)
+                    // Preset picker menu
+                    Menu {
+                        ForEach(ButtonPreset.all) { preset in
+                            Button(preset.name.lowercased()) {
+                                settings.categoryPresets[category.rawValue] = preset.id
+                            }
+                        }
+                    } label: {
+                        Text("▾")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.accent)
                     }
-                    .font(SudoTheme.mono(size: 7))
-                    .foregroundColor(SudoTheme.accent)
-                    .buttonStyle(.plain)
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 16)
+                    .accessibilityLabel("change preset for \(category.displayName)")
                 }
             }
 
@@ -492,48 +654,25 @@ struct ConfigView: View {
             .font(SudoTheme.mono(size: 8))
             .foregroundColor(SudoTheme.textMuted)
             .buttonStyle(.plain)
+            .accessibilityLabel("reset category presets to defaults")
         }
-    }
-
-    private func cyclePreset(for category: AppCategory) {
-        let allPresets = ButtonPreset.all
-        let currentID = settings.categoryPresets[category.rawValue]
-        let currentIdx = allPresets.firstIndex(where: { $0.id == currentID }) ?? -1
-        let nextIdx = (currentIdx + 1) % allPresets.count
-        settings.categoryPresets[category.rawValue] = allPresets[nextIdx].id
     }
 
     // MARK: - Simple Mode + Firmware
 
     @ViewBuilder
     private var simpleModeContent: some View {
-        // Explanation
-        VStack(alignment: .leading, spacing: 4) {
-            Text("what is simple mode?")
-                .font(SudoTheme.mono(size: 9, weight: .bold))
-                .foregroundColor(SudoTheme.text)
-            Text("when all 4 buttons use keyboard shortcuts or media keys (not AI search), the pad can be flashed to work natively on any computer — no companion app needed.")
-                .font(SudoTheme.mono(size: 8))
-                .foregroundColor(SudoTheme.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-
-        // Status
-        HStack {
-            Text("status:")
-                .font(SudoTheme.mono(size: 9))
-                .foregroundColor(SudoTheme.textMuted)
-            Text(settings.isSimpleMode ? "active — all buttons are simple" : "inactive — some buttons use AI search")
+        // Status + explanation in one line
+        HStack(spacing: 6) {
+            Circle()
+                .fill(settings.isSimpleMode ? SudoTheme.accent : SudoTheme.surface)
+                .frame(width: 6, height: 6)
+            Text(settings.isSimpleMode
+                 ? "active — all buttons use direct shortcuts"
+                 : "inactive — use shortcuts/media preset to enable")
                 .font(SudoTheme.mono(size: 8))
                 .foregroundColor(settings.isSimpleMode ? SudoTheme.accent : SudoTheme.textMuted)
                 .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-
-        if !settings.isSimpleMode {
-            Text("switch all buttons to keyCombo or mediaKey mode in button remapping (use shortcuts, media, browsing, or discord preset)")
-                .font(SudoTheme.mono(size: 7))
-                .foregroundColor(SudoTheme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
 
@@ -688,7 +827,9 @@ struct ConfigView: View {
                     NSPasteboard.general.setString(settings.apiKey, forType: .string)
                     copiedKey = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copiedKey = false }
-                }.font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                }
+                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                .accessibilityLabel("copy api key")
             }
         }
     }
@@ -736,7 +877,7 @@ struct ConfigView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: 150)
+            .frame(height: 200)
             .padding(4)
             .background(Color(hex: 0x050505))
             .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
