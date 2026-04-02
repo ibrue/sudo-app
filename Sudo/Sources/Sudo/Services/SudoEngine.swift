@@ -226,6 +226,12 @@ final class SudoEngine: ObservableObject {
         let frontName = frontApp?.localizedName ?? "none"
         let frontBundleID = frontApp?.bundleIdentifier
 
+        // Skip if the frontmost app is Sudo itself (e.g. menu bar popover is open)
+        // This prevents auto-switch from firing and overwriting the target app
+        if let bid = frontBundleID, bid == Bundle.main.bundleIdentifier {
+            return
+        }
+
         if let app = appDetector.detectFrontmostApp() {
             let label = app.isBrowser ? "\(app.name) (\(app.matchedDomain ?? "web"))" : app.name
             DispatchQueue.main.async {
@@ -248,6 +254,8 @@ final class SudoEngine: ObservableObject {
     private func handleAutoSwitch(category: AppCategory, appName: String) {
         guard SudoSettings.shared.autoSwitchEnabled else { return }
         guard category != .unknown else { return }
+        // Don't switch presets while an action is being processed
+        guard !isProcessing else { return }
 
         let settings = SudoSettings.shared
         guard let presetID = settings.categoryPresets[category.rawValue],
@@ -333,14 +341,28 @@ final class SudoEngine: ObservableObject {
 
         if searchAllApps {
             appsToSearch = appDetector.detectAllSupportedApps()
-        } else if let app = appDetector.detectFrontmostApp() {
+        } else if let app = appDetector.detectFrontmostApp(),
+                  app.bundleID != Bundle.main.bundleIdentifier {
             appsToSearch = [app]
-        } else if let frontApp = NSWorkspace.shared.frontmostApplication {
+        } else if let frontApp = NSWorkspace.shared.frontmostApplication,
+                  frontApp.bundleIdentifier != Bundle.main.bundleIdentifier {
             // Not a recognized AI app, but still try the frontmost app
             let detected = AppDetector.DetectedApp(
                 bundleID: frontApp.bundleIdentifier ?? "",
                 name: frontApp.localizedName ?? "unknown",
                 pid: frontApp.processIdentifier,
+                isBrowser: false,
+                matchedDomain: nil
+            )
+            appsToSearch = [detected]
+        } else if let savedBundleID = self.currentBundleID,
+                  savedBundleID != Bundle.main.bundleIdentifier,
+                  let targetApp = NSRunningApplication.runningApplications(withBundleIdentifier: savedBundleID).first {
+            // Fallback: use the previously detected app (e.g. when triggered from Sudo's UI)
+            let detected = AppDetector.DetectedApp(
+                bundleID: savedBundleID,
+                name: targetApp.localizedName ?? "unknown",
+                pid: targetApp.processIdentifier,
                 isBrowser: false,
                 matchedDomain: nil
             )
