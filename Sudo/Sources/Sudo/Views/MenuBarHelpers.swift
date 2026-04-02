@@ -56,25 +56,8 @@ struct SectionHeader: View {
             }
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// Status row: `label:  value`
-struct StatusRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(alignment: .top) {
-            Text("\(label):")
-                .font(SudoTheme.mono(size: 11))
-                .foregroundColor(SudoTheme.textMuted)
-                .frame(width: 36, alignment: .leading)
-            Text(value)
-                .font(SudoTheme.mono(size: 11))
-                .foregroundColor(SudoTheme.text)
-                .lineLimit(2)
-        }
+        .accessibilityLabel("\(title) section")
+        .accessibilityHint(isExpanded ? "collapse" : "expand")
     }
 }
 
@@ -95,6 +78,8 @@ struct SettingToggle: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn ? "on" : "off")
     }
 }
 
@@ -128,6 +113,11 @@ struct DeviceButton: View {
                         Text("♫")
                             .font(SudoTheme.mono(size: 9))
                             .foregroundColor(SudoTheme.surface)
+                    } else {
+                        // aiSearch mode indicator
+                        Text("◉")
+                            .font(SudoTheme.mono(size: 7))
+                            .foregroundColor(SudoTheme.surface)
                     }
                 }
                 .padding(.horizontal, 8)
@@ -136,6 +126,7 @@ struct DeviceButton: View {
             .background(SudoTheme.bg)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("button \(action.buttonNumber): \(action.displayName)")
     }
 }
 
@@ -159,9 +150,4 @@ struct DeviceView: View {
         }
         .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
     }
-}
-
-/// Developer mode check
-var isDeveloperMode: Bool {
-    FileManager.default.fileExists(atPath: NSHomeDirectory() + "/sudo-app/build.sh")
 }

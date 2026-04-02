@@ -73,6 +73,16 @@ final class SudoSettings: ObservableObject {
         }
     }
 
+    /// Developer mode: enabled when ~/sudo-app/build.sh exists
+    var isDeveloperMode: Bool {
+        FileManager.default.fileExists(atPath: NSHomeDirectory() + "/sudo-app/build.sh")
+    }
+
+    /// Persisted section expansion state for ConfigView
+    @Published var expandedSections: Set<String> {
+        didSet { defaults.set(Array(expandedSections), forKey: "expandedSections") }
+    }
+
     /// Action mode per button (aiSearch, keyCombo, mediaKey)
     @Published var buttonModes: [String: String] {
         didSet { defaults.set(buttonModes, forKey: "buttonModes") }
@@ -185,6 +195,7 @@ final class SudoSettings: ObservableObject {
         self.debounceDuration = defaults.object(forKey: "debounceDuration") == nil ? 0.02 : defaults.double(forKey: "debounceDuration")
         self.autoSwitchEnabled = defaults.object(forKey: "autoSwitchEnabled") == nil ? true : defaults.bool(forKey: "autoSwitchEnabled")
         self.categoryPresets = (defaults.dictionary(forKey: "categoryPresets") as? [String: String]) ?? Self.defaultCategoryPresets()
+        self.expandedSections = Set(defaults.stringArray(forKey: "expandedSections") ?? [])
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
         self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]
