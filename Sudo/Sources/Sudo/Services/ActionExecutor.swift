@@ -37,11 +37,13 @@ final class ActionExecutor {
         var positionValue: AnyObject?
         var sizeValue: AnyObject?
         if AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
-           AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success {
+           AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
+           let axPos = positionValue as? AXValue,
+           let axSize = sizeValue as? AXValue {
             var position = CGPoint.zero
             var size = CGSize.zero
-            AXValueGetValue(positionValue as! AXValue, .cgPoint, &position)
-            AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+            AXValueGetValue(axPos, .cgPoint, &position)
+            AXValueGetValue(axSize, .cgSize, &size)
             let center = CGPoint(x: position.x + size.width / 2, y: position.y + size.height / 2)
             return performClickAtPoint(center)
         }

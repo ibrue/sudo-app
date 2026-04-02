@@ -87,15 +87,17 @@ final class AXInspector {
         var posStr: String?
         var sizeStr: String?
         var hasPos = false
-        if let posValue = getAttribute(element, kAXPositionAttribute as String) {
+        if let posValue = getAttribute(element, kAXPositionAttribute as String),
+           let axPos = posValue as? AXValue {
             var point = CGPoint.zero
-            AXValueGetValue(posValue as! AXValue, .cgPoint, &point)
+            AXValueGetValue(axPos, .cgPoint, &point)
             posStr = "\(Int(point.x)),\(Int(point.y))"
             hasPos = true
         }
-        if let sizeValue = getAttribute(element, kAXSizeAttribute as String) {
+        if let sizeValue = getAttribute(element, kAXSizeAttribute as String),
+           let axSize = sizeValue as? AXValue {
             var size = CGSize.zero
-            AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+            AXValueGetValue(axSize, .cgSize, &size)
             sizeStr = "\(Int(size.width))x\(Int(size.height))"
         }
 

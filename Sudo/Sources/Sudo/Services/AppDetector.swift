@@ -101,10 +101,10 @@ final class AppDetector {
 
         var titleValue: AnyObject?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &titleValue) == .success,
-              let focusedWindow = titleValue else { return nil }
+              let focusedWindow = titleValue as? AXUIElement else { return nil }
 
         var windowTitleValue: AnyObject?
-        AXUIElementCopyAttributeValue(focusedWindow as! AXUIElement, kAXTitleAttribute as CFString, &windowTitleValue)
+        AXUIElementCopyAttributeValue(focusedWindow, kAXTitleAttribute as CFString, &windowTitleValue)
         let windowTitle = (windowTitleValue as? String)?.lowercased() ?? ""
 
         let urlBarText = findURLField(in: appElement, depth: 0, maxDepth: 6)?.lowercased() ?? ""

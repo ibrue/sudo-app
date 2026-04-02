@@ -491,7 +491,7 @@ struct ConfigView: View {
 
     @ViewBuilder
     private var autoApproveContent: some View {
-        Text("⚠ experimental — auto-presses approve when rules match")
+        Text("[!] experimental — auto-presses approve when rules match")
             .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.error)
             .fixedSize(horizontal: false, vertical: true)
         SettingToggle(label: "enable auto-approve", isOn: Binding(
@@ -626,9 +626,6 @@ struct ConfigView: View {
                     Text("→")
                         .font(SudoTheme.mono(size: 8))
                         .foregroundColor(SudoTheme.border)
-                        .font(SudoTheme.mono(size: 8))
-                        .foregroundColor(SudoTheme.text)
-                        .lineLimit(1)
                     Spacer()
                     // Preset picker menu
                     Menu {
@@ -868,7 +865,7 @@ struct ConfigView: View {
                                 line.hasPrefix("$") ? SudoTheme.accent :
                                 line.hasPrefix("---") ? SudoTheme.textMuted :
                                 line.contains("error") || line.contains("failed") ? SudoTheme.error :
-                                line.contains("warning") ? Color(hex: 0xD4B85C) :
+                                line.contains("warning") ? SudoTheme.warning :
                                 SudoTheme.text
                             )
                             .textSelection(.enabled)
@@ -879,7 +876,7 @@ struct ConfigView: View {
             }
             .frame(height: 200)
             .padding(4)
-            .background(Color(hex: 0x050505))
+            .background(SudoTheme.terminalBg)
             .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
             .onChange(of: rebuilder.buildLog.count) { _ in
                 if let last = rebuilder.buildLog.indices.last { proxy.scrollTo(last, anchor: .bottom) }
@@ -898,7 +895,7 @@ struct ConfigView: View {
                 }
         }
         .padding(.horizontal, 4).padding(.vertical, 3)
-        .background(Color(hex: 0x050505))
+        .background(SudoTheme.terminalBg)
         .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
 
         HStack(spacing: 8) {

@@ -36,8 +36,7 @@ final class AXButtonFinder {
         // Check focused element first — some dialogs only expose elements via focus
         var focusedElement: AnyObject?
         if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement) == .success,
-           let focused = focusedElement {
-            let axFocused = focused as! AXUIElement
+           let axFocused = focusedElement as? AXUIElement {
             if let text = getElementText(axFocused), matchesSearchTerms(text, terms: searchTerms) {
                 if hasPosition(axFocused) {
                     print("[sudo-ax] Found via focused element: \(text)")
@@ -50,8 +49,8 @@ final class AXButtonFinder {
         AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
 
         var orderedWindows = windows
-        if let focused = focusedWindow {
-            orderedWindows.insert(focused as! AXUIElement, at: 0)
+        if let focused = focusedWindow as? AXUIElement {
+            orderedWindows.insert(focused, at: 0)
         }
 
         for window in orderedWindows {
@@ -220,8 +219,7 @@ final class AXButtonFinder {
 
         var focusedWindow: AnyObject?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow) == .success,
-              let window = focusedWindow else { return nil }
-        let axWindow = window as! AXUIElement
+              let axWindow = focusedWindow as? AXUIElement else { return nil }
 
         var collected: [String] = []
         collectContextText(element: axWindow, collected: &collected, depth: 0)

@@ -12,6 +12,8 @@ enum SudoTheme {
     static let border = Color(hex: 0x1E1E1E)
     static let error = Color(hex: 0xFF3333)
     static let surface = Color(hex: 0x333333)
+    static let terminalBg = Color(hex: 0x050505)
+    static let warning = Color(hex: 0xD4B85C)
 
     // MARK: - Typography
     static let monoFont: Font = .system(.body, design: .monospaced)

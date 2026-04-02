@@ -217,7 +217,9 @@ struct MainView: View {
 
             HStack(spacing: 8) {
                 Button("[ open settings ]") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                        NSWorkspace.shared.open(url)
+                    }
                 }
                 .font(SudoTheme.mono(size: 9))
                 .foregroundColor(SudoTheme.accent)
