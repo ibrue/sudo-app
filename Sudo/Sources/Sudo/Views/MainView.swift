@@ -7,14 +7,52 @@ struct MainView: View {
     @ObservedObject var rebuilder: DevRebuilder
     let onOpenConfig: () -> Void
 
+    @State private var scanLineOffset: CGFloat = 0
+
     var body: some View {
+        ZStack {
+            // Main content
+            mainContent
+
+            // Scan-line overlay (subtle CRT effect)
+            ScanLineOverlay()
+                .allowsHitTesting(false)
+
+            // Processing glow overlay
+            if engine.isProcessing {
+                Rectangle()
+                    .fill(SudoTheme.accentGlow)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+
+            // Success/failure flash overlay
+            if engine.lastResult == .success {
+                Rectangle()
+                    .fill(SudoTheme.accent.opacity(0.06))
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            } else if engine.lastResult == .failure {
+                Rectangle()
+                    .fill(SudoTheme.error.opacity(0.06))
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: 320)
+        .animation(.easeOut(duration: SudoTheme.flashDuration), value: engine.lastResult)
+        .animation(.easeInOut(duration: 0.3), value: engine.isProcessing)
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
-                Text("[sudo]")
-                    .font(SudoTheme.mono(size: 14, weight: .bold))
-                    .foregroundColor(SudoTheme.accent)
-                    .accessibilityLabel("sudo home")
+                headerGlow
                 Spacer()
                 Circle()
                     .fill(engine.isConnected ? SudoTheme.accent : SudoTheme.error)
@@ -53,7 +91,7 @@ struct MainView: View {
 
             SudoDivider()
 
-            // Auto-switch notification
+            // Auto-switch notification (slides in/out)
             if let switchStatus = engine.autoSwitchStatus {
                 HStack {
                     Text(switchStatus)
@@ -65,6 +103,7 @@ struct MainView: View {
                 }
                 .padding(.horizontal, SudoTheme.spacingMd)
                 .padding(.vertical, 4)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             // Compact status line
@@ -95,11 +134,15 @@ struct MainView: View {
                 Text("last:")
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
-                Text(engine.lastAction.lowercased())
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.text)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                if engine.isProcessing {
+                    AnimatedDots()
+                } else {
+                    Text(engine.lastAction.lowercased())
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 8)
@@ -235,6 +278,18 @@ struct MainView: View {
         .padding(.vertical, 8)
     }
 
+    // MARK: - Animated status
+
+    /// Pulsing header text during processing
+    private var headerGlow: some View {
+        Text("[sudo]")
+            .font(SudoTheme.mono(size: 14, weight: .bold))
+            .foregroundColor(SudoTheme.accent)
+            .shadow(color: engine.isProcessing ? SudoTheme.accent.opacity(0.4) : .clear, radius: 6)
+            .animation(.easeInOut(duration: SudoTheme.glowDuration).repeatForever(autoreverses: true), value: engine.isProcessing)
+            .accessibilityLabel("sudo home")
+    }
+
     // MARK: - MCP Overlay
 
     @ViewBuilder
@@ -262,5 +317,37 @@ struct MainView: View {
         }
         .padding(.horizontal, SudoTheme.spacingMd)
         .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Scan Line Overlay
+
+/// Subtle CRT scan-line effect — alternating 1px lines at very low opacity
+struct ScanLineOverlay: View {
+    var body: some View {
+        Canvas { context, size in
+            for y in stride(from: 0, to: size.height, by: 3) {
+                let rect = CGRect(x: 0, y: y, width: size.width, height: 1)
+                context.fill(Path(rect), with: .color(.black.opacity(0.06)))
+            }
+        }
+        .drawingGroup()
+    }
+}
+
+// MARK: - Animated Dots
+
+/// Pulsing "searching..." dots for the status line
+struct AnimatedDots: View {
+    @State private var dotCount = 0
+    private let timer = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Text("searching" + String(repeating: ".", count: dotCount + 1))
+            .font(SudoTheme.mono(size: 9))
+            .foregroundColor(SudoTheme.accent)
+            .onReceive(timer) { _ in
+                dotCount = (dotCount + 1) % 3
+            }
     }
 }

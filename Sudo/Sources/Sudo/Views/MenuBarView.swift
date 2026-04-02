@@ -11,21 +11,25 @@ struct MenuBarView: View {
     @State private var currentView: ViewMode = .main
 
     var body: some View {
-        if currentView == .main {
-            MainView(
-                engine: engine,
-                updater: updater,
-                rebuilder: rebuilder,
-                onOpenConfig: { currentView = .config }
-            )
-        } else {
-            ConfigView(
-                engine: engine,
-                updater: updater,
-                rebuilder: rebuilder,
-                apiServer: apiServer,
-                onBack: { currentView = .main }
-            )
+        Group {
+            if currentView == .main {
+                MainView(
+                    engine: engine,
+                    updater: updater,
+                    rebuilder: rebuilder,
+                    onOpenConfig: { withAnimation(.easeInOut(duration: 0.2)) { currentView = .config } }
+                )
+                .transition(.move(edge: .leading))
+            } else {
+                ConfigView(
+                    engine: engine,
+                    updater: updater,
+                    rebuilder: rebuilder,
+                    apiServer: apiServer,
+                    onBack: { withAnimation(.easeInOut(duration: 0.2)) { currentView = .main } }
+                )
+                .transition(.move(edge: .trailing))
+            }
         }
     }
 }

@@ -15,6 +15,15 @@ enum SudoTheme {
     static let terminalBg = Color(hex: 0x050505)
     static let warning = Color(hex: 0xD4B85C)
 
+    // Glow variants (for animations)
+    static let accentGlow = Color(red: 0/255.0, green: 255/255.0, blue: 65/255.0, opacity: 0.15)
+    static let errorGlow = Color(red: 255/255.0, green: 51/255.0, blue: 51/255.0, opacity: 0.15)
+    static let hoverBg = Color(hex: 0x1A1A1A)
+
+    // MARK: - Animation
+    static let flashDuration: Double = 0.15
+    static let glowDuration: Double = 0.8
+
     // MARK: - Typography
     static let monoFont: Font = .system(.body, design: .monospaced)
     static func mono(size: CGFloat, weight: Font.Weight = .regular) -> Font {
