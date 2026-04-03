@@ -19,11 +19,6 @@ enum SudoTheme {
     static let hoverBg = Color.white.opacity(0.06)
 
     // MARK: - Typography
-    /// SF Pro for labels, headers, UI chrome
-    static func label(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight)
-    }
-    /// Monospace for values, code, data
     static let monoFont: Font = .system(.body, design: .monospaced)
     static func mono(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .monospaced)

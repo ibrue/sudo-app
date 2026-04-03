@@ -53,8 +53,8 @@ struct MainView: View {
                     .padding(.trailing, 6)
                     .accessibilityLabel(engine.isConnected ? "connected" : "disconnected")
                 Button(action: onOpenConfig) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 12, weight: .medium))
+                    Text("[=]")
+                        .font(SudoTheme.mono(size: 11))
                         .foregroundColor(SudoTheme.textMuted)
                 }
                 .buttonStyle(.plain)
@@ -88,7 +88,7 @@ struct MainView: View {
             if let switchStatus = engine.autoSwitchStatus {
                 HStack {
                     Text(switchStatus)
-                        .font(SudoTheme.label(size: 9))
+                        .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.accent)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -103,18 +103,18 @@ struct MainView: View {
             HStack {
                 if SudoSettings.shared.isSimpleMode {
                     Text("mode:")
-                        .font(SudoTheme.label(size: 9))
+                        .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.textMuted)
                     Text("simple")
                         .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.accent)
                     Text("·")
-                        .font(SudoTheme.label(size: 9))
+                        .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.border)
                 } else {
                     // Show target app (Sudo is frontmost when popover is open)
                     Text("target:")
-                        .font(SudoTheme.label(size: 9))
+                        .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.textMuted)
                     if let target = engine.targetAppName {
                         Text(target)
@@ -128,11 +128,11 @@ struct MainView: View {
                             .foregroundColor(SudoTheme.warning)
                     }
                     Text("·")
-                        .font(SudoTheme.label(size: 9))
+                        .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.border)
                 }
                 Text("last:")
-                    .font(SudoTheme.label(size: 9))
+                    .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
                 if engine.isProcessing {
                     AnimatedDots()
@@ -153,16 +153,16 @@ struct MainView: View {
             if updater.updateAvailable {
                 HStack {
                     Text("update available: v\(updater.latestVersion)")
-                        .font(SudoTheme.label(size: 9))
+                        .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.accent)
                     Spacer()
                     if updater.isUpdating {
                         Text("installing...")
-                            .font(SudoTheme.label(size: 8))
+                            .font(SudoTheme.mono(size: 8))
                             .foregroundColor(SudoTheme.textMuted)
                     } else {
                         Button("install") { updater.installUpdate() }
-                            .font(SudoTheme.label(size: 9, weight: .medium))
+                            .font(SudoTheme.mono(size: 9, weight: .medium))
                             .foregroundColor(SudoTheme.accent)
                             .buttonStyle(.plain)
                             .accessibilityLabel("install update")
@@ -176,7 +176,7 @@ struct MainView: View {
             // Stats
             HStack {
                 Text("\(SudoSettings.shared.totalPresses) presses · \(SudoSettings.shared.currentStreak) day streak")
-                    .font(SudoTheme.label(size: 8))
+                    .font(SudoTheme.mono(size: 8))
                     .foregroundColor(SudoTheme.textMuted)
                     .lineLimit(1)
                 Spacer()
@@ -195,28 +195,28 @@ struct MainView: View {
                         rebuilder.rebuild()
                     }
                     .buttonStyle(.plain)
-                    .font(SudoTheme.label(size: 9))
+                    .font(SudoTheme.mono(size: 9))
                     .foregroundColor(rebuilder.isRebuilding ? SudoTheme.textMuted : SudoTheme.accent)
                     .disabled(rebuilder.isRebuilding)
 
                     Text("·")
-                        .font(SudoTheme.label(size: 9))
+                        .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.border)
                 }
 
                 Button("updates") { updater.checkForUpdates() }
                     .buttonStyle(.plain)
-                    .font(SudoTheme.label(size: 9))
+                    .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
                     .accessibilityLabel("check for updates")
 
                 Text("·")
-                    .font(SudoTheme.label(size: 9))
+                    .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.border)
 
                 Button("bug?") { BugReporter.shared.fileReport(engine: engine) }
                     .buttonStyle(.plain)
-                    .font(SudoTheme.label(size: 9))
+                    .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
                     .accessibilityLabel("report a bug")
 
@@ -245,7 +245,7 @@ struct MainView: View {
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(engine.axPermissionGranted ? SudoTheme.accent : SudoTheme.error)
                 Text("accessibility")
-                    .font(SudoTheme.label(size: 9))
+                    .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.text)
                 Spacer()
                 Text(engine.axPermissionGranted ? "ok" : "denied")
@@ -254,7 +254,7 @@ struct MainView: View {
             }
 
             Text("toggle sudo off then on in accessibility settings")
-                .font(SudoTheme.label(size: 8))
+                .font(SudoTheme.mono(size: 8))
                 .foregroundColor(SudoTheme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -264,12 +264,12 @@ struct MainView: View {
                         NSWorkspace.shared.open(url)
                     }
                 }
-                .font(SudoTheme.label(size: 9, weight: .medium))
+                .font(SudoTheme.mono(size: 9, weight: .medium))
                 .foregroundColor(SudoTheme.accent)
                 .buttonStyle(.plain)
 
                 Button("re-check") { engine.checkAndConnect() }
-                    .font(SudoTheme.label(size: 9, weight: .medium))
+                    .font(SudoTheme.mono(size: 9, weight: .medium))
                     .foregroundColor(SudoTheme.accent)
                     .buttonStyle(.plain)
             }
@@ -296,7 +296,7 @@ struct MainView: View {
     private func mcpOverlay(prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("mcp approval requested:")
-                .font(SudoTheme.label(size: 9, weight: .medium))
+                .font(SudoTheme.mono(size: 9, weight: .medium))
                 .foregroundColor(SudoTheme.accent)
             Text(prompt)
                 .font(SudoTheme.mono(size: 9))
@@ -304,12 +304,12 @@ struct MainView: View {
                 .lineLimit(3)
             HStack(spacing: 12) {
                 Button("approve") { engine.resolveMCPRequest(approved: true) }
-                    .font(SudoTheme.label(size: 10, weight: .medium))
+                    .font(SudoTheme.mono(size: 10, weight: .medium))
                     .foregroundColor(SudoTheme.accent)
                     .buttonStyle(.plain)
                     .accessibilityLabel("approve mcp request")
                 Button("reject") { engine.resolveMCPRequest(approved: false) }
-                    .font(SudoTheme.label(size: 10, weight: .medium))
+                    .font(SudoTheme.mono(size: 10, weight: .medium))
                     .foregroundColor(SudoTheme.error)
                     .buttonStyle(.plain)
                     .accessibilityLabel("reject mcp request")

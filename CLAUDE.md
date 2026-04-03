@@ -5,9 +5,9 @@
 ### Text & Typography
 - **All UI text is lowercase** — menu bar labels, status text, section headers, button labels, footer buttons
 - Menu bar states: `[sudo]`, `[ ok ]`, `[fail]`, `[·___]` — always 6 chars total
-- **SF Pro (`SudoTheme.label`)** for UI chrome: labels, buttons, descriptions, status text
-- **Monospace (`SudoTheme.mono`)** for data values: display names, bundle IDs, key combos, version numbers, API keys
-- Toggles use bracket checkboxes: `[x]` / `[ ]` (monospace)
+- Monospace everywhere via `SudoTheme.mono(size:weight:)` — brand identity
+- Toggles use bracket checkboxes: `[x]` / `[ ]`
+- Brackets are part of the brand: `[sudo]`, `[=]`, `[<]`, `[ ok ]`, `[fail]`
 - No emojis except `✓` (success) and `✗` (failure) in the action log
 - Button display names are stored lowercase: "approve / yes", "reject / no"
 - Never use `action.displayName` directly in UI — it's already lowercase from settings

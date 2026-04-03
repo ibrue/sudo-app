@@ -33,11 +33,11 @@ struct SectionHeader: View {
         Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }) {
             HStack {
                 Text(title)
-                    .font(SudoTheme.label(size: 11, weight: isExpanded ? .semibold : .regular))
+                    .font(SudoTheme.mono(size: 11, weight: isExpanded ? .semibold : .regular))
                     .foregroundColor(isExpanded ? SudoTheme.accent : (isHovered ? SudoTheme.text : SudoTheme.textMuted))
                 if let count = count {
                     Text("(\(count))")
-                        .font(SudoTheme.label(size: 10))
+                        .font(SudoTheme.mono(size: 10))
                         .foregroundColor(SudoTheme.textMuted)
                 }
                 if let badge = badge {
@@ -47,7 +47,7 @@ struct SectionHeader: View {
                 }
                 Spacer()
                 Text(isExpanded ? "▾" : "▸")
-                    .font(SudoTheme.label(size: 10))
+                    .font(SudoTheme.mono(size: 10))
                     .foregroundColor(SudoTheme.textMuted)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
                     .animation(.easeInOut(duration: 0.2), value: isExpanded)
@@ -78,7 +78,7 @@ struct SettingToggle: View {
                     .font(SudoTheme.mono(size: 10))
                     .foregroundColor(SudoTheme.accent)
                 Text(label)
-                    .font(SudoTheme.label(size: 10))
+                    .font(SudoTheme.mono(size: 10))
                     .foregroundColor(isHovered ? SudoTheme.text : SudoTheme.textMuted)
             }
         }
@@ -120,7 +120,7 @@ struct DeviceButton: View {
 
                 // Button number (SF Pro)
                 Text("\(action.buttonNumber)")
-                    .font(SudoTheme.label(size: 11))
+                    .font(SudoTheme.mono(size: 11))
                     .foregroundColor(SudoTheme.textMuted)
                     .frame(width: 14, alignment: .leading)
 
@@ -135,11 +135,11 @@ struct DeviceButton: View {
                 // Mode indicator
                 Group {
                     if mode == .keyCombo {
-                        Text("⌨").font(SudoTheme.label(size: 9))
+                        Text("⌨").font(SudoTheme.mono(size: 9))
                     } else if mode == .mediaKey {
-                        Text("♫").font(SudoTheme.label(size: 9))
+                        Text("♫").font(SudoTheme.mono(size: 9))
                     } else {
-                        Text("◉").font(SudoTheme.label(size: 7))
+                        Text("◉").font(SudoTheme.mono(size: 7))
                     }
                 }
                 .foregroundColor(SudoTheme.textMuted.opacity(0.5))
