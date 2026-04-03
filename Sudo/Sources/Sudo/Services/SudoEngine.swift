@@ -335,20 +335,23 @@ final class SudoEngine: ObservableObject {
         let isSudoFrontmost = frontApp?.bundleIdentifier == Bundle.main.bundleIdentifier
 
         if mode == .keyCombo, let kc = SudoSettings.shared.keyCombo(for: action) {
-            // If triggered from Sudo's UI, activate the target app first
-            let targetName: String
-            if isSudoFrontmost {
-                guard let bid = currentBundleID,
-                      let targetApp = NSRunningApplication.runningApplications(withBundleIdentifier: bid).first else {
-                    finishAction(action: action, success: false, app: "none", method: "",
-                                 statusText: "\(action.displayName.lowercased()) — no target app")
-                    return
-                }
-                targetApp.activate()
-                usleep(100_000) // 100ms for app to come to front
-                targetName = targetApp.localizedName?.lowercased() ?? bid
+            // Resolve the target app — use saved bundleID when Sudo is frontmost
+            let target: NSRunningApplication?
+            if isSudoFrontmost, let bid = currentBundleID {
+                target = NSRunningApplication.runningApplications(withBundleIdentifier: bid).first
             } else {
-                targetName = frontAppName
+                target = frontApp
+            }
+            guard let app = target else {
+                finishAction(action: action, success: false, app: "none", method: "",
+                             statusText: "\(action.displayName.lowercased()) — no target app")
+                return
+            }
+            let targetName = app.localizedName?.lowercased() ?? "unknown"
+            // Ensure target app has keyboard focus before sending
+            if !app.isActive {
+                app.activate()
+                usleep(150_000)
             }
             sendKeyComboDirect(keyCode: kc.keyCode, modifiers: kc.modifiers)
             finishAction(action: action, success: true, app: targetName,
@@ -570,20 +573,45 @@ final class SudoEngine: ObservableObject {
         print("[sudo] Sent keyCode \(keyCode) to PID \(pid)")
     }
 
-    /// Send a keyboard shortcut (e.g., Cmd+C, Cmd+V) to the frontmost app.
-    /// Uses a private event source so pad hotkey modifiers (Ctrl+Shift) don't bleed through.
+    /// Send a keyboard shortcut via AppleScript System Events.
+    /// This bypasses the CGEvent tap chain entirely — no modifier bleed, no re-interception.
     private func sendKeyComboDirect(keyCode: UInt16, modifiers: CGEventFlags) {
-        // privateState avoids inheriting physically-held modifier keys (e.g., the
-        // Ctrl+Shift from the pad's hotkey) that combinedSessionState would include.
-        let source = CGEventSource(stateID: .privateState)
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        keyDown?.flags = modifiers
-        keyUp?.flags = modifiers
-        keyDown?.post(tap: .cghidEventTap)
-        usleep(50_000)
-        keyUp?.post(tap: .cghidEventTap)
-        print("[sudo] Sent keyCombo: keyCode=\(keyCode) modifiers=\(modifiers.rawValue)")
+        let keystroke = appleScriptKeystroke(keyCode: keyCode, modifiers: modifiers)
+        var error: NSDictionary?
+        let script = NSAppleScript(source: "tell application \"System Events\" to \(keystroke)")
+        script?.executeAndReturnError(&error)
+        if let error = error {
+            print("[sudo] AppleScript error: \(error)")
+        } else {
+            print("[sudo] Sent keyCombo via AppleScript: \(keystroke)")
+        }
+    }
+
+    /// Convert a virtual keyCode + modifier flags into an AppleScript keystroke command.
+    private func appleScriptKeystroke(keyCode: UInt16, modifiers: CGEventFlags) -> String {
+        // macOS virtual keyCode → character (standard US keyboard layout)
+        let keyMap: [UInt16: String] = [
+            0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x",
+            8: "c", 9: "v", 11: "b", 12: "q", 13: "w", 14: "e", 15: "r",
+            16: "y", 17: "t", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6",
+            23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0",
+            30: "]", 31: "o", 32: "u", 33: "[", 34: "i", 35: "p", 37: "l",
+            38: "j", 40: "k", 41: ";", 42: "\\", 43: ",", 44: "/", 46: "m",
+            47: ".", 49: " ",
+        ]
+
+        var mods: [String] = []
+        if modifiers.contains(.maskCommand) { mods.append("command down") }
+        if modifiers.contains(.maskShift) { mods.append("shift down") }
+        if modifiers.contains(.maskControl) { mods.append("control down") }
+        if modifiers.contains(.maskAlternate) { mods.append("option down") }
+        let using = mods.isEmpty ? "" : " using {\(mods.joined(separator: ", "))}"
+
+        // Known characters use "keystroke", everything else uses "key code"
+        if let char = keyMap[keyCode] {
+            return "keystroke \"\(char)\"\(using)"
+        }
+        return "key code \(keyCode)\(using)"
     }
 
     /// Send a media key event (play/pause, next, previous, mute)
