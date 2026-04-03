@@ -573,45 +573,24 @@ final class SudoEngine: ObservableObject {
         print("[sudo] Sent keyCode \(keyCode) to PID \(pid)")
     }
 
-    /// Send a keyboard shortcut via AppleScript System Events.
-    /// This bypasses the CGEvent tap chain entirely — no modifier bleed, no re-interception.
+    /// Send a keyboard shortcut directly via CGEvent.
+    /// Suspends the event tap first so synthesized events aren't re-intercepted,
+    /// and uses a private event source so pad hotkey modifiers don't bleed through.
     private func sendKeyComboDirect(keyCode: UInt16, modifiers: CGEventFlags) {
-        let keystroke = appleScriptKeystroke(keyCode: keyCode, modifiers: modifiers)
-        var error: NSDictionary?
-        let script = NSAppleScript(source: "tell application \"System Events\" to \(keystroke)")
-        script?.executeAndReturnError(&error)
-        if let error = error {
-            print("[sudo] AppleScript error: \(error)")
-        } else {
-            print("[sudo] Sent keyCombo via AppleScript: \(keystroke)")
-        }
-    }
+        let source = CGEventSource(stateID: .privateState)
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        keyDown?.flags = modifiers
+        keyUp?.flags = modifiers
 
-    /// Convert a virtual keyCode + modifier flags into an AppleScript keystroke command.
-    private func appleScriptKeystroke(keyCode: UInt16, modifiers: CGEventFlags) -> String {
-        // macOS virtual keyCode → character (standard US keyboard layout)
-        let keyMap: [UInt16: String] = [
-            0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x",
-            8: "c", 9: "v", 11: "b", 12: "q", 13: "w", 14: "e", 15: "r",
-            16: "y", 17: "t", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6",
-            23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0",
-            30: "]", 31: "o", 32: "u", 33: "[", 34: "i", 35: "p", 37: "l",
-            38: "j", 40: "k", 41: ";", 42: "\\", 43: ",", 44: "/", 46: "m",
-            47: ".", 49: " ",
-        ]
+        hotkeyListener.suspend()
+        keyDown?.post(tap: .cghidEventTap)
+        usleep(50_000)
+        keyUp?.post(tap: .cghidEventTap)
+        usleep(20_000) // let events clear the tap chain before re-enabling
+        hotkeyListener.resume()
 
-        var mods: [String] = []
-        if modifiers.contains(.maskCommand) { mods.append("command down") }
-        if modifiers.contains(.maskShift) { mods.append("shift down") }
-        if modifiers.contains(.maskControl) { mods.append("control down") }
-        if modifiers.contains(.maskAlternate) { mods.append("option down") }
-        let using = mods.isEmpty ? "" : " using {\(mods.joined(separator: ", "))}"
-
-        // Known characters use "keystroke", everything else uses "key code"
-        if let char = keyMap[keyCode] {
-            return "keystroke \"\(char)\"\(using)"
-        }
-        return "key code \(keyCode)\(using)"
+        print("[sudo] Sent keyCombo: keyCode=\(keyCode) modifiers=\(modifiers.rawValue)")
     }
 
     /// Send a media key event (play/pause, next, previous, mute)

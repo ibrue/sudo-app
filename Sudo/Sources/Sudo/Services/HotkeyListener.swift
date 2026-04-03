@@ -45,6 +45,16 @@ final class HotkeyListener {
         print("[sudo] Hotkey listener active — waiting for input")
     }
 
+    /// Temporarily disable the event tap so synthesized CGEvents aren't re-intercepted.
+    func suspend() {
+        if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
+    }
+
+    /// Re-enable the event tap after synthesized events have been posted.
+    func resume() {
+        if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+    }
+
     func stop() {
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
