@@ -14,9 +14,11 @@ struct MainView: View {
             // Main content
             mainContent
 
-            // Scan-line overlay (subtle CRT effect)
-            ScanLineOverlay()
-                .allowsHitTesting(false)
+            // Scan-line overlay (terminal theme only)
+            if SudoTheme.showScanLines {
+                ScanLineOverlay()
+                    .allowsHitTesting(false)
+            }
 
             // Processing glow overlay
             if engine.isProcessing {
@@ -232,7 +234,7 @@ struct MainView: View {
             .padding(.vertical, 8)
         }
         .frame(width: 320)
-        .background(SudoTheme.bg)
+        .sudoBackground()
     }
 
     // MARK: - Permission Warning

@@ -70,27 +70,14 @@ struct ConfigView: View {
                         if settings.expandedSections.contains("remap") { remapContent }
                     }
 
-                    // 2. Auto-switch
+                    // 2. Auto-switch (includes per-app overrides)
                     section {
                         SectionHeader("auto-switch", isExpanded: sectionBinding("autoswitch"),
                                       badge: settings.autoSwitchEnabled ? "on" : nil)
                         if settings.expandedSections.contains("autoswitch") { autoSwitchContent }
                     }
 
-                    // 3. Simple mode + firmware
-                    section {
-                        SectionHeader("simple mode", isExpanded: sectionBinding("simplemode"),
-                                      badge: settings.isSimpleMode ? "active" : nil)
-                        if settings.expandedSections.contains("simplemode") { simpleModeContent }
-                    }
-
-                    // 4. Per-app profiles
-                    section {
-                        SectionHeader("per-app profiles", isExpanded: sectionBinding("profiles"))
-                        if settings.expandedSections.contains("profiles") { profilesContent }
-                    }
-
-                    // 5. Macros
+                    // 3. Macros
                     section {
                         SectionHeader("macros", isExpanded: sectionBinding("macros"), count: settings.macros.count)
                         if settings.expandedSections.contains("macros") { macrosContent }
@@ -172,7 +159,7 @@ struct ConfigView: View {
             .padding(.vertical, 8)
         }
         .frame(width: 320)
-        .background(SudoTheme.bg)
+        .sudoBackground()
     }
 
     // MARK: - Section wrapper
@@ -191,6 +178,29 @@ struct ConfigView: View {
 
     @ViewBuilder
     private var settingsContent: some View {
+        // Theme picker
+        HStack(spacing: 8) {
+            Text("theme:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+            ForEach(AppTheme.allCases, id: \.rawValue) { theme in
+                let isSelected = settings.appTheme == theme
+                Button(theme.rawValue) {
+                    settings.appTheme = theme
+                }
+                .font(SudoTheme.mono(size: 9, weight: isSelected ? .bold : .regular))
+                .foregroundColor(isSelected ? SudoTheme.accent : SudoTheme.textMuted)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .overlay(Rectangle().stroke(isSelected ? SudoTheme.accent : SudoTheme.border, lineWidth: 1))
+            }
+            Spacer()
+        }
+        .accessibilityLabel("theme selection")
+
+        SudoDivider()
+
         SettingToggle(label: "search all apps", isOn: Binding(
             get: { engine.searchAllApps }, set: { engine.searchAllApps = $0 }
         ))
@@ -331,54 +341,6 @@ struct ConfigView: View {
                     }.font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                 }
             }
-        }
-    }
-
-    // MARK: - Per-app profiles
-
-    @ViewBuilder
-    private var profilesContent: some View {
-        HStack {
-            Text("current app:")
-                .font(SudoTheme.mono(size: 8))
-                .foregroundColor(SudoTheme.textMuted)
-            Text(engine.detectedApp.lowercased())
-                .font(SudoTheme.mono(size: 8))
-                .foregroundColor(SudoTheme.text)
-                .lineLimit(1)
-            Spacer()
-            if let bid = engine.currentBundleID {
-                Button("save profile") {
-                    var buttons: [PadAction: ButtonPreset.ButtonConfig] = [:]
-                    for a in PadAction.allCases {
-                        buttons[a] = ButtonPreset.ButtonConfig(
-                            displayName: settings.displayName(for: a),
-                            searchTerms: settings.searchTerms(for: a)
-                        )
-                    }
-                    let preset = ButtonPreset(id: bid, name: bid, description: "", buttons: buttons)
-                    settings.saveProfile(forBundleID: bid, preset: preset)
-                }
-                .font(SudoTheme.mono(size: 7))
-                .foregroundColor(SudoTheme.accent)
-                .buttonStyle(.plain)
-            }
-        }
-        if !settings.appProfiles.isEmpty {
-            ForEach(Array(settings.appProfiles.keys.sorted()), id: \.self) { bundleID in
-                HStack {
-                    Text(bundleID.split(separator: ".").last.map(String.init)?.lowercased() ?? bundleID)
-                        .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.text)
-                    Spacer()
-                    if engine.currentBundleID == bundleID {
-                        Text("active").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent)
-                    }
-                    Button("delete") { settings.deleteProfile(forBundleID: bundleID) }
-                        .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
-                }
-            }
-        } else {
-            Text("no saved profiles").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted)
         }
     }
 
@@ -656,153 +618,47 @@ struct ConfigView: View {
             .foregroundColor(SudoTheme.textMuted)
             .buttonStyle(.plain)
             .accessibilityLabel("reset category presets to defaults")
-        }
-    }
 
-    // MARK: - Simple Mode + Firmware
+            SudoDivider()
 
-    @ViewBuilder
-    private var simpleModeContent: some View {
-        // Status + explanation in one line
-        HStack(spacing: 6) {
-            Circle()
-                .fill(settings.isSimpleMode ? SudoTheme.accent : SudoTheme.surface)
-                .frame(width: 6, height: 6)
-            Text(settings.isSimpleMode
-                 ? "active — all buttons use direct shortcuts"
-                 : "inactive — use shortcuts/media preset to enable")
-                .font(SudoTheme.mono(size: 8))
-                .foregroundColor(settings.isSimpleMode ? SudoTheme.accent : SudoTheme.textMuted)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+            // Per-app overrides (takes priority over category)
+            Text("per-app overrides:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
 
-        SudoDivider()
-
-        // Firmware flashing
-        Text("flash firmware:")
-            .font(SudoTheme.mono(size: 9, weight: .bold))
-            .foregroundColor(SudoTheme.text)
-
-        Text("flash your pad so it works without the app. hold BOOTSEL while plugging in USB to enter bootloader mode.")
-            .font(SudoTheme.mono(size: 8))
-            .foregroundColor(SudoTheme.textMuted)
-            .fixedSize(horizontal: false, vertical: true)
-
-        // Firmware profiles
-        ForEach(FirmwareFlasher.profiles) { profile in
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(profile.name)
-                        .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.text)
-                    Text(profile.description)
-                        .font(SudoTheme.mono(size: 7))
-                        .foregroundColor(SudoTheme.textMuted)
-                        .lineLimit(1)
+            if !settings.appPresetOverrides.isEmpty {
+                ForEach(Array(settings.appPresetOverrides.keys.sorted()), id: \.self) { bundleID in
+                    let presetID = settings.appPresetOverrides[bundleID] ?? ""
+                    let name = ButtonPreset.all.first(where: { $0.id == presetID })?.name.lowercased() ?? presetID
+                    let shortName = bundleID.split(separator: ".").last.map(String.init)?.lowercased() ?? bundleID
+                    HStack {
+                        Text(shortName)
+                            .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.text)
+                        Text("→")
+                            .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.border)
+                        Text(name)
+                            .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted)
+                        Spacer()
+                        Button("del") { settings.appPresetOverrides.removeValue(forKey: bundleID) }
+                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                    }
                 }
-                Spacer()
-                Button("flash") {
-                    flasher.flash(profile: profile)
+            }
+
+            if let bid = engine.currentBundleID, bid != Bundle.main.bundleIdentifier {
+                let shortName = bid.split(separator: ".").last.map(String.init)?.lowercased() ?? bid
+                Button("+ override \(shortName) → current preset") {
+                    // Save whichever preset is currently active for this specific app
+                    if let lastPreset = engine.lastAppliedPresetID {
+                        settings.appPresetOverrides[bid] = lastPreset
+                    }
                 }
-                .font(SudoTheme.mono(size: 8))
-                .foregroundColor(flasher.bootloaderDetected ? SudoTheme.accent : SudoTheme.surface)
-                .buttonStyle(.plain)
-                .disabled(!flasher.bootloaderDetected)
-            }
-            .padding(.vertical, 2)
-        }
-
-        SudoDivider()
-
-        // Flash status
-        flashStatusView
-
-        // Detect button
-        HStack {
-            Button("[ detect device ]") {
-                flasher.detectBootloader()
-            }
-            .font(SudoTheme.mono(size: 9))
-            .foregroundColor(SudoTheme.accent)
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            if flasher.bootloaderDetected {
-                Text("rpi-rp2 found")
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.accent)
+                .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
             }
         }
     }
 
-    @ViewBuilder
-    private var flashStatusView: some View {
-        switch flasher.state {
-        case .idle:
-            EmptyView()
-        case .detectingDevice:
-            HStack {
-                Text("scanning for bootloader...")
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.textMuted)
-                Spacer()
-            }
-        case .deviceFound(let path):
-            HStack {
-                Text("device ready at \(path)")
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.accent)
-                    .lineLimit(1)
-                Spacer()
-            }
-        case .flashing(let progress):
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .scaleEffect(0.5)
-                        .frame(width: 10, height: 10)
-                    Text(progress)
-                        .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.accent)
-                }
-                // Animated flash bar
-                GeometryReader { geo in
-                    Rectangle()
-                        .fill(SudoTheme.accent)
-                        .frame(width: geo.size.width * 0.6)
-                        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: flasher.state)
-                }
-                .frame(height: 2)
-            }
-            .padding(.vertical, 4)
-        case .success:
-            HStack {
-                Text("firmware flashed successfully — device will reboot")
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.accent)
-                Spacer()
-                Button("ok") { flasher.reset() }
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.accent)
-                    .buttonStyle(.plain)
-            }
-        case .error(let message):
-            HStack {
-                Text(message)
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.error)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                Button("dismiss") { flasher.reset() }
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.textMuted)
-                    .buttonStyle(.plain)
-            }
-        }
-    }
+    // (Simple mode section removed — isSimpleMode badge still shows in MainView)
 
     // MARK: - Developer API
 

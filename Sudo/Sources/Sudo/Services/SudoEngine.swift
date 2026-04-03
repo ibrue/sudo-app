@@ -22,7 +22,7 @@ final class SudoEngine: ObservableObject {
     @Published var autoApproveCount: Int = 0
     @Published var autoSwitchStatus: String? = nil
     @Published var currentCategory: AppCategory = .unknown
-    private var lastAppliedPresetID: String? = nil
+    var lastAppliedPresetID: String? = nil
 
     // MARK: - MCP Server support
 
@@ -258,8 +258,19 @@ final class SudoEngine: ObservableObject {
         guard !isProcessing else { return }
 
         let settings = SudoSettings.shared
-        guard let presetID = settings.categoryPresets[category.rawValue],
-              let preset = ButtonPreset.all.first(where: { $0.id == presetID }),
+
+        // Per-app override takes priority over category mapping
+        let presetID: String
+        if let bundleID = currentBundleID,
+           let override = settings.appPresetOverrides[bundleID] {
+            presetID = override
+        } else if let categoryPreset = settings.categoryPresets[category.rawValue] {
+            presetID = categoryPreset
+        } else {
+            return
+        }
+
+        guard let preset = ButtonPreset.all.first(where: { $0.id == presetID }),
               presetID != lastAppliedPresetID else { return }
 
         preset.apply()
