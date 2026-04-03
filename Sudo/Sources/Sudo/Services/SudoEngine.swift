@@ -105,6 +105,10 @@ final class SudoEngine: ObservableObject {
         // Check permissions and try to start listener
         checkAndConnect()
 
+        // Trigger the Automation permission prompt for System Events.
+        // macOS only shows the toggle in Privacy settings after the first request.
+        requestAutomationPermission()
+
         // Re-check permissions every 3 seconds until connected
         permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
@@ -573,24 +577,75 @@ final class SudoEngine: ObservableObject {
         print("[sudo] Sent keyCode \(keyCode) to PID \(pid)")
     }
 
-    /// Send a keyboard shortcut directly via CGEvent.
-    /// Suspends the event tap first so synthesized events aren't re-intercepted,
-    /// and uses a private event source so pad hotkey modifiers don't bleed through.
+    /// Send a keyboard shortcut via osascript subprocess (thread-safe, no NSAppleScript issues).
+    /// Uses System Events keystroke — the most reliable way to send shortcuts on macOS.
     private func sendKeyComboDirect(keyCode: UInt16, modifiers: CGEventFlags) {
-        let source = CGEventSource(stateID: .privateState)
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        keyDown?.flags = modifiers
-        keyUp?.flags = modifiers
+        let keystroke = buildKeystrokeCommand(keyCode: keyCode, modifiers: modifiers)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", "tell application \"System Events\" to \(keystroke)"]
+        let errPipe = Pipe()
+        process.standardError = errPipe
+        process.standardOutput = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus != 0 {
+                let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+                let errStr = String(data: errData, encoding: .utf8) ?? "unknown"
+                print("[sudo] osascript failed (\(process.terminationStatus)): \(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
+            } else {
+                print("[sudo] Sent keyCombo via osascript: \(keystroke)")
+            }
+        } catch {
+            print("[sudo] Failed to launch osascript: \(error)")
+        }
+    }
 
-        hotkeyListener.suspend()
-        keyDown?.post(tap: .cghidEventTap)
-        usleep(50_000)
-        keyUp?.post(tap: .cghidEventTap)
-        usleep(20_000) // let events clear the tap chain before re-enabling
-        hotkeyListener.resume()
+    /// Map virtual keyCode + modifier flags to an AppleScript keystroke command.
+    private func buildKeystrokeCommand(keyCode: UInt16, modifiers: CGEventFlags) -> String {
+        let keyMap: [UInt16: String] = [
+            0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x",
+            8: "c", 9: "v", 11: "b", 12: "q", 13: "w", 14: "e", 15: "r",
+            16: "y", 17: "t", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6",
+            23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0",
+            30: "]", 31: "o", 32: "u", 33: "[", 34: "i", 35: "p", 37: "l",
+            38: "j", 40: "k", 41: ";", 42: "\\", 43: ",", 44: "/", 46: "m",
+            47: ".", 49: " ",
+        ]
+        var mods: [String] = []
+        if modifiers.contains(.maskCommand) { mods.append("command down") }
+        if modifiers.contains(.maskShift) { mods.append("shift down") }
+        if modifiers.contains(.maskControl) { mods.append("control down") }
+        if modifiers.contains(.maskAlternate) { mods.append("option down") }
+        let using = mods.isEmpty ? "" : " using {\(mods.joined(separator: ", "))}"
+        if let char = keyMap[keyCode] {
+            return "keystroke \"\(char)\"\(using)"
+        }
+        return "key code \(keyCode)\(using)"
+    }
 
-        print("[sudo] Sent keyCombo: keyCode=\(keyCode) modifiers=\(modifiers.rawValue)")
+    /// Trigger macOS Automation permission prompt for System Events on first launch.
+    /// This makes the toggle appear in Privacy & Security → Automation.
+    private func requestAutomationPermission() {
+        DispatchQueue.global(qos: .utility).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", "tell application \"System Events\" to return \"\""]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            do {
+                try process.run()
+                process.waitUntilExit()
+                if process.terminationStatus == 0 {
+                    print("[sudo] Automation permission granted for System Events")
+                } else {
+                    print("[sudo] Automation permission not yet granted — enable in Privacy & Security → Automation")
+                }
+            } catch {
+                print("[sudo] Could not check Automation permission: \(error)")
+            }
+        }
     }
 
     /// Send a media key event (play/pause, next, previous, mute)
