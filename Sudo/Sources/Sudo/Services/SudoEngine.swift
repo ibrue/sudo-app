@@ -570,9 +570,12 @@ final class SudoEngine: ObservableObject {
         print("[sudo] Sent keyCode \(keyCode) to PID \(pid)")
     }
 
-    /// Send a keyboard shortcut (e.g., Cmd+C, Cmd+V) to the frontmost app
+    /// Send a keyboard shortcut (e.g., Cmd+C, Cmd+V) to the frontmost app.
+    /// Uses a private event source so pad hotkey modifiers (Ctrl+Shift) don't bleed through.
     private func sendKeyComboDirect(keyCode: UInt16, modifiers: CGEventFlags) {
-        let source = CGEventSource(stateID: .combinedSessionState)
+        // privateState avoids inheriting physically-held modifier keys (e.g., the
+        // Ctrl+Shift from the pad's hotkey) that combinedSessionState would include.
+        let source = CGEventSource(stateID: .privateState)
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
         keyDown?.flags = modifiers
