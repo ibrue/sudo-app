@@ -13,6 +13,16 @@ final class SudoEngine: ObservableObject {
     @Published var lastContext: String = ""
     @Published var detectedApp: String = "none"
     @Published var currentBundleID: String? = nil
+
+    /// The app that will be targeted when a button is pressed from Sudo's UI.
+    var targetAppName: String? {
+        guard let bid = currentBundleID,
+              bid != Bundle.main.bundleIdentifier,
+              let app = NSRunningApplication.runningApplications(withBundleIdentifier: bid).first
+        else { return nil }
+        return app.localizedName?.lowercased()
+    }
+
     @Published var isConnected: Bool = false
     @Published var axPermissionGranted: Bool = false
     @Published var permissionStatus: String = "checking..."
@@ -497,8 +507,9 @@ final class SudoEngine: ObservableObject {
                 self.sendFailureNotification(action: action, app: app)
             }
 
-            // Reset flash after 1.5 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // Reset flash — quick for success, longer for failure
+            let resetDelay: Double = success ? 0.8 : 1.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + resetDelay) {
                 if self.lastResult == .success || self.lastResult == .failure {
                     self.lastResult = .idle
                     PadCommunicator.shared.sendState(.idle)

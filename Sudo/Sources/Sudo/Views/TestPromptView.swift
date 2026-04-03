@@ -98,7 +98,7 @@ struct TestPromptView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(SudoTheme.bg)
+        .sudoBackground()
     }
 
     private func timestamp() -> String {
@@ -114,7 +114,7 @@ struct TestButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(SudoTheme.mono(size: 12, weight: .medium))
-            .foregroundColor(configuration.isPressed ? SudoTheme.bg : color)
+            .foregroundColor(configuration.isPressed ? .white : color)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(configuration.isPressed ? color : Color.clear)

@@ -40,15 +40,15 @@ struct ConfigView: View {
             // Header with back button
             HStack {
                 Button(action: onBack) {
-                    Text("[<]")
-                        .font(SudoTheme.mono(size: 11))
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(SudoTheme.accent)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("back to main view")
                 Spacer()
                 Text("settings")
-                    .font(SudoTheme.mono(size: 12, weight: .bold))
+                    .font(SudoTheme.label(size: 12, weight: .semibold))
                     .foregroundColor(SudoTheme.text)
                 Spacer()
                 Circle()
@@ -141,16 +141,16 @@ struct ConfigView: View {
                         rebuilder.rebuild()
                     }
                     .buttonStyle(.plain)
-                    .font(SudoTheme.mono(size: 9))
+                    .font(SudoTheme.label(size: 9))
                     .foregroundColor(rebuilder.isRebuilding ? SudoTheme.textMuted : SudoTheme.accent)
                     .disabled(rebuilder.isRebuilding)
-                    Text("·").font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.border)
+                    Text("·").font(SudoTheme.label(size: 9)).foregroundColor(SudoTheme.border)
                 }
                 Button("updates") { updater.checkForUpdates() }
-                    .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
-                Text("·").font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.border)
+                    .buttonStyle(.plain).font(SudoTheme.label(size: 9)).foregroundColor(SudoTheme.textMuted)
+                Text("·").font(SudoTheme.label(size: 9)).foregroundColor(SudoTheme.border)
                 Button("bug?") { BugReporter.shared.fileReport(engine: engine) }
-                    .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
+                    .buttonStyle(.plain).font(SudoTheme.label(size: 9)).foregroundColor(SudoTheme.textMuted)
                 Spacer()
                 Button("quit") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
@@ -178,29 +178,6 @@ struct ConfigView: View {
 
     @ViewBuilder
     private var settingsContent: some View {
-        // Theme picker
-        HStack(spacing: 8) {
-            Text("theme:")
-                .font(SudoTheme.mono(size: 9))
-                .foregroundColor(SudoTheme.textMuted)
-            ForEach(AppTheme.allCases, id: \.rawValue) { theme in
-                let isSelected = settings.appTheme == theme
-                Button(theme.rawValue) {
-                    settings.appTheme = theme
-                }
-                .font(SudoTheme.mono(size: 9, weight: isSelected ? .bold : .regular))
-                .foregroundColor(isSelected ? SudoTheme.accent : SudoTheme.textMuted)
-                .buttonStyle(.plain)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .overlay(Rectangle().stroke(isSelected ? SudoTheme.accent : SudoTheme.border, lineWidth: 1))
-            }
-            Spacer()
-        }
-        .accessibilityLabel("theme selection")
-
-        SudoDivider()
-
         SettingToggle(label: "search all apps", isOn: Binding(
             get: { engine.searchAllApps }, set: { engine.searchAllApps = $0 }
         ))
@@ -214,7 +191,7 @@ struct ConfigView: View {
         // Debounce
         HStack {
             Text("debounce:")
-                .font(SudoTheme.mono(size: 9))
+                .font(SudoTheme.label(size: 9))
                 .foregroundColor(SudoTheme.textMuted)
             Text("\(Int(settings.debounceDuration * 1000))ms")
                 .font(SudoTheme.mono(size: 9))
@@ -223,19 +200,19 @@ struct ConfigView: View {
             Spacer()
             Button("-") {
                 settings.debounceDuration = max(0.01, settings.debounceDuration - 0.01)
-            }.font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+            }.font(SudoTheme.label(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
             Button("+") {
                 settings.debounceDuration = min(0.5, settings.debounceDuration + 0.01)
-            }.font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+            }.font(SudoTheme.label(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
             Button("reset") {
                 settings.debounceDuration = 0.02
-            }.font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+            }.font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
         }
 
         SudoDivider()
 
         Text("hotkey bindings:")
-            .font(SudoTheme.mono(size: 9))
+            .font(SudoTheme.label(size: 9))
             .foregroundColor(SudoTheme.textMuted)
 
         ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
@@ -255,7 +232,7 @@ struct ConfigView: View {
         }
 
         Button("reset to defaults") { settings.resetHotkeyBindings() }
-            .font(SudoTheme.mono(size: 8))
+            .font(SudoTheme.label(size: 8))
             .foregroundColor(SudoTheme.textMuted)
             .buttonStyle(.plain)
             .accessibilityLabel("reset hotkey bindings to defaults")
@@ -267,7 +244,7 @@ struct ConfigView: View {
     private var remapContent: some View {
         // Quick presets
         Text("quick presets:")
-            .font(SudoTheme.mono(size: 9))
+            .font(SudoTheme.label(size: 9))
             .foregroundColor(SudoTheme.textMuted)
 
         ForEach(ButtonPreset.all) { preset in
@@ -278,13 +255,13 @@ struct ConfigView: View {
                         .foregroundColor(SudoTheme.accent)
                     Spacer()
                     Text(preset.description)
-                        .font(SudoTheme.mono(size: 7))
+                        .font(SudoTheme.label(size: 7))
                         .foregroundColor(SudoTheme.textMuted)
                         .lineLimit(1)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("apply \(preset.name.lowercased()) preset")
@@ -294,21 +271,21 @@ struct ConfigView: View {
 
         // Per-button editor
         Text("custom mapping:")
-            .font(SudoTheme.mono(size: 9))
+            .font(SudoTheme.label(size: 9))
             .foregroundColor(SudoTheme.textMuted)
 
         ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
             if editingAction == action {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Text("name").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted).frame(width: 32, alignment: .trailing)
+                        Text("name").font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.textMuted).frame(width: 32, alignment: .trailing)
                         TextField("", text: $editName).font(SudoTheme.mono(size: 9)).textFieldStyle(.plain).foregroundColor(SudoTheme.text)
-                            .padding(2).overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            .padding(2).overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
                     }
                     HStack(spacing: 4) {
-                        Text("find").font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted).frame(width: 32, alignment: .trailing)
+                        Text("find").font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.textMuted).frame(width: 32, alignment: .trailing)
                         TextField("", text: $editTerms).font(SudoTheme.mono(size: 9)).textFieldStyle(.plain).foregroundColor(SudoTheme.text)
-                            .padding(2).overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            .padding(2).overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
                     }
                     HStack(spacing: 8) {
                         Spacer()
@@ -317,20 +294,20 @@ struct ConfigView: View {
                             let terms = editTerms.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                             settings.buttonSearchTerms[action.rawValue] = terms.isEmpty ? nil : terms
                             editingAction = nil
-                        }.font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                        }.font(SudoTheme.label(size: 9)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                         Button("reset") {
                             settings.buttonNames[action.rawValue] = nil
                             settings.buttonSearchTerms[action.rawValue] = nil
                             editingAction = nil
-                        }.font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                        }.font(SudoTheme.label(size: 9)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
                         Button("cancel") { editingAction = nil }
-                            .font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+                            .font(SudoTheme.label(size: 9)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
                     }
                 }
                 .padding(6).overlay(Rectangle().stroke(SudoTheme.accent.opacity(0.3), lineWidth: 1))
             } else {
-                HStack(spacing: 0) {
-                    Rectangle().fill(Color(hex: action.buttonColorHex)).frame(width: 3, height: 18).padding(.trailing, 6)
+                HStack(spacing: 6) {
+                    Circle().fill(Color(hex: action.buttonColorHex)).frame(width: 6, height: 6)
                     Text("\(action.buttonNumber)").font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted).frame(width: 12, alignment: .leading)
                     Text(action.displayName).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.text)
                     Spacer()
@@ -338,7 +315,7 @@ struct ConfigView: View {
                         editName = settings.buttonNames[action.rawValue] ?? action.defaultDisplayName
                         editTerms = (settings.buttonSearchTerms[action.rawValue] ?? action.defaultSearchTerms).joined(separator: ", ")
                         editingAction = action
-                    }.font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                    }.font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                 }
             }
         }
@@ -364,12 +341,12 @@ struct ConfigView: View {
                     }
                     if editingMacroID == macro.id {
                         Button("done") { editingMacroID = nil }
-                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                            .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                     } else {
                         Button("edit") { editingMacroID = macro.id }
-                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                            .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                         Button("del") { settings.macros.remove(at: index) }
-                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                            .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
                     }
                 }
 
@@ -378,18 +355,18 @@ struct ConfigView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         // Name field
                         HStack(spacing: 4) {
-                            Text("name").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted).frame(width: 36, alignment: .trailing)
+                            Text("name").font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.textMuted).frame(width: 36, alignment: .trailing)
                             TextField("macro name", text: Binding(
                                 get: { settings.macros[index].name },
                                 set: { settings.macros[index].name = $0 }
                             ))
                             .font(SudoTheme.mono(size: 8)).textFieldStyle(.plain).foregroundColor(SudoTheme.text)
-                            .padding(2).overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                            .padding(2).overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
                         }
 
                         // Assign to button
                         HStack(spacing: 4) {
-                            Text("button").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted).frame(width: 36, alignment: .trailing)
+                            Text("button").font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.textMuted).frame(width: 36, alignment: .trailing)
                             ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
                                 let isAssigned = settings.macros[index].assignedButton == action.rawValue
                                 Button("\(action.buttonNumber)") {
@@ -401,11 +378,11 @@ struct ConfigView: View {
                                 .frame(width: 18)
                             }
                             Button("none") { settings.macros[index].assignedButton = nil }
-                                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+                                .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
                         }
 
                         // Steps list
-                        Text("steps:").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted)
+                        Text("steps:").font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.textMuted)
                         ForEach(Array(macro.steps.enumerated()), id: \.element.id) { stepIdx, step in
                             HStack(spacing: 4) {
                                 Text("\(stepIdx + 1).")
@@ -418,13 +395,13 @@ struct ConfigView: View {
                                 Button("✕") {
                                     settings.macros[index].steps.remove(at: stepIdx)
                                 }
-                                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                                .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
                             }
                         }
 
                         // Add step buttons
                         HStack(spacing: 4) {
-                            Text("add:").font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted)
+                            Text("add:").font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.textMuted)
                             ForEach(PadAction.physicalOrder, id: \.rawValue) { action in
                                 Button(action.defaultDisplayName.lowercased().components(separatedBy: " ").first ?? action.rawValue) {
                                     let step = MacroStep(action: action, delayAfter: 1.0)
@@ -435,7 +412,7 @@ struct ConfigView: View {
                         }
                     }
                     .padding(6)
-                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
                 }
             }
         }
@@ -445,7 +422,7 @@ struct ConfigView: View {
             settings.macros.append(macro)
             editingMacroID = macro.id
         }
-        .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+        .font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
         .accessibilityLabel("add macro")
     }
 
@@ -454,7 +431,7 @@ struct ConfigView: View {
     @ViewBuilder
     private var autoApproveContent: some View {
         Text("[!] experimental — auto-presses approve when rules match")
-            .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.error)
+            .font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.error)
             .fixedSize(horizontal: false, vertical: true)
         SettingToggle(label: "enable auto-approve", isOn: Binding(
             get: { settings.autoApproveEnabled },
@@ -472,7 +449,7 @@ struct ConfigView: View {
                     Spacer()
                     if editingRuleID == rule.id {
                         Button("done") { editingRuleID = nil }
-                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                            .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                     } else {
                         Button("edit") {
                             editingRuleID = rule.id
@@ -481,11 +458,11 @@ struct ConfigView: View {
                             editRuleContextContains = rule.contextContains ?? ""
                             editRuleContextExcludes = rule.contextExcludes ?? ""
                         }
-                        .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                        .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                         Button("del") {
                             settings.autoApproveRules.remove(at: index)
                         }
-                        .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                        .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
                     }
                 }
 
@@ -510,7 +487,7 @@ struct ConfigView: View {
                         ), hint: "never if context has this text")
                     }
                     .padding(6)
-                    .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
                 }
             }
         }
@@ -524,7 +501,7 @@ struct ConfigView: View {
             editRuleContextContains = ""
             editRuleContextExcludes = ""
         }
-        .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+        .font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
         .accessibilityLabel("add auto-approve rule")
     }
 
@@ -532,11 +509,11 @@ struct ConfigView: View {
     private func ruleField(_ label: String, text: Binding<String>, hint: String = "") -> some View {
         HStack(spacing: 4) {
             Text(label)
-                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.textMuted)
+                .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.textMuted)
                 .frame(width: 44, alignment: .trailing)
             TextField(hint, text: text)
                 .font(SudoTheme.mono(size: 8)).textFieldStyle(.plain).foregroundColor(SudoTheme.text)
-                .padding(2).overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+                .padding(2).overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
         }
     }
 
@@ -545,7 +522,7 @@ struct ConfigView: View {
     @ViewBuilder
     private var autoSwitchContent: some View {
         Text("automatically switches button preset when the focused app changes category")
-            .font(SudoTheme.mono(size: 8))
+            .font(SudoTheme.label(size: 8))
             .foregroundColor(SudoTheme.textMuted)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -564,7 +541,7 @@ struct ConfigView: View {
             SudoDivider()
 
             Text("category → preset:")
-                .font(SudoTheme.mono(size: 9))
+                .font(SudoTheme.label(size: 9))
                 .foregroundColor(SudoTheme.textMuted)
 
             ForEach(AppCategory.allCases.filter { $0 != .unknown }, id: \.rawValue) { category in
@@ -586,7 +563,7 @@ struct ConfigView: View {
                         .foregroundColor(isActive ? SudoTheme.text : SudoTheme.textMuted)
                         .frame(width: 90, alignment: .leading)
                     Text("→")
-                        .font(SudoTheme.mono(size: 8))
+                        .font(SudoTheme.label(size: 8))
                         .foregroundColor(SudoTheme.border)
                     // Preset picker menu with current name as label
                     Menu {
@@ -602,7 +579,7 @@ struct ConfigView: View {
                                 .foregroundColor(SudoTheme.text)
                                 .lineLimit(1)
                             Text("▾")
-                                .font(SudoTheme.mono(size: 8))
+                                .font(SudoTheme.label(size: 8))
                                 .foregroundColor(SudoTheme.accent)
                         }
                     }
@@ -614,7 +591,7 @@ struct ConfigView: View {
             Button("reset all to defaults") {
                 settings.categoryPresets = SudoSettings.defaultCategoryPresets()
             }
-            .font(SudoTheme.mono(size: 8))
+            .font(SudoTheme.label(size: 8))
             .foregroundColor(SudoTheme.textMuted)
             .buttonStyle(.plain)
             .accessibilityLabel("reset category presets to defaults")
@@ -623,7 +600,7 @@ struct ConfigView: View {
 
             // Per-app overrides (takes priority over category)
             Text("per-app overrides:")
-                .font(SudoTheme.mono(size: 9))
+                .font(SudoTheme.label(size: 9))
                 .foregroundColor(SudoTheme.textMuted)
 
             if !settings.appPresetOverrides.isEmpty {
@@ -640,7 +617,7 @@ struct ConfigView: View {
                             .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted)
                         Spacer()
                         Button("del") { settings.appPresetOverrides.removeValue(forKey: bundleID) }
-                            .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                            .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
                     }
                 }
             }
@@ -653,7 +630,7 @@ struct ConfigView: View {
                         settings.appPresetOverrides[bid] = lastPreset
                     }
                 }
-                .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                .font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
             }
         }
     }
@@ -685,7 +662,7 @@ struct ConfigView: View {
                     copiedKey = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copiedKey = false }
                 }
-                .font(SudoTheme.mono(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                .font(SudoTheme.label(size: 7)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                 .accessibilityLabel("copy api key")
             }
         }
@@ -696,7 +673,7 @@ struct ConfigView: View {
     @ViewBuilder
     private var historyContent: some View {
         if engine.actionLog.isEmpty {
-            Text("no actions yet").font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
+            Text("no actions yet").font(SudoTheme.label(size: 9)).foregroundColor(SudoTheme.textMuted)
         } else {
             ForEach(engine.actionLog.prefix(20)) { entry in
                 HStack(spacing: 6) {
@@ -736,8 +713,8 @@ struct ConfigView: View {
             }
             .frame(height: 200)
             .padding(4)
-            .background(SudoTheme.terminalBg)
-            .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+            .background(Color(nsColor: .textBackgroundColor))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
             .onChange(of: rebuilder.buildLog.count) { _ in
                 if let last = rebuilder.buildLog.indices.last { proxy.scrollTo(last, anchor: .bottom) }
             }
@@ -755,16 +732,16 @@ struct ConfigView: View {
                 }
         }
         .padding(.horizontal, 4).padding(.vertical, 3)
-        .background(SudoTheme.terminalBg)
-        .overlay(Rectangle().stroke(SudoTheme.border, lineWidth: 1))
+        .background(Color(nsColor: .textBackgroundColor))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
 
         HStack(spacing: 8) {
             Button("copy log") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(rebuilder.buildLog.joined(separator: "\n"), forType: .string)
-            }.font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+            }.font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
             Button("clear") { rebuilder.clearLog() }
-                .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+                .font(SudoTheme.label(size: 8)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
         }
     }
 

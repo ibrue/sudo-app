@@ -5,9 +5,9 @@
 ### Text & Typography
 - **All UI text is lowercase** — menu bar labels, status text, section headers, button labels, footer buttons
 - Menu bar states: `[sudo]`, `[ ok ]`, `[fail]`, `[·___]` — always 6 chars total
-- Section headers use `> ` prefix: `> button map`, `> settings`, `> history`
-- Toggles use bracket checkboxes: `[x]` / `[ ]`
-- Terminal aesthetic: monospace everywhere, no serif/sans-serif
+- **SF Pro (`SudoTheme.label`)** for UI chrome: labels, buttons, descriptions, status text
+- **Monospace (`SudoTheme.mono`)** for data values: display names, bundle IDs, key combos, version numbers, API keys
+- Toggles use bracket checkboxes: `[x]` / `[ ]` (monospace)
 - No emojis except `✓` (success) and `✗` (failure) in the action log
 - Button display names are stored lowercase: "approve / yes", "reject / no"
 - Never use `action.displayName` directly in UI — it's already lowercase from settings
@@ -16,26 +16,24 @@
 - Physical buttons are numbered 1-4 (bottom to top): green, yellow, red, black
 - Users see button numbers (1-4), NOT F-key numbers (F13-F16)
 - F-keys are internal hotkey details — only shown in settings > hotkey bindings
-- Color stripes (3px on left) represent physical button colors in all UI
+- Buttons are floating pills with color-tinted glass backgrounds (no stripe)
 
-### Colors (from design tokens, must match website)
-- Background: `#0a0a0a` (SudoTheme.bg)
-- Background secondary: `#111111` (SudoTheme.bgSecondary)
-- Accent (green): `#00ff41` (SudoTheme.accent)
-- Text: `#f0f0f0` (SudoTheme.text)
-- Muted text: `#666666` (SudoTheme.textMuted)
-- Border: `#1e1e1e` (SudoTheme.border)
-- Error (red): `#ff3333` (SudoTheme.error)
-- Surface: `#333333` (SudoTheme.surface)
+### Colors & Materials
+- **Liquid glass aesthetic** — `.ultraThinMaterial` root, `.thinMaterial` for cards/buttons
+- Accent (green): `#34C759` (Apple system green, `SudoTheme.accent`)
+- Text: `.primary` / `.secondary` (system semantic colors)
+- Border: `.separatorColor` at 0.3 opacity, 0.5px width
+- Error: `.systemRed`, Warning: `.systemYellow`
 - Button colors: green `#6abf73`, yellow `#d4b85c`, red `#c85c5c`, black `#2a2a2a`
+- Button tint: assigned color at 4% opacity (8% hover, 12% press)
 
 ### Layout
 - Menu bar popover: fixed 320pt width
-- Sharp corners everywhere (borderRadius = 0)
-- 1px borders, no rounded corners
+- Rounded corners: 10pt for cards, 14pt for pill buttons, 6pt for hover states
+- 0.5px borders with low opacity (glass-friendly)
 - Consistent padding: 16px horizontal, 10px vertical per section
-- Sections separated by 1px divider lines
-- No heavy colored backgrounds — use thin color stripes instead
+- Sections separated by 0.5px subtle divider lines
+- Buttons are floating pills with 6px spacing between them
 - Developer features (terminal, pull & rebuild) hidden when not in dev mode
 
 ### Code Conventions

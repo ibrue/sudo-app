@@ -69,11 +69,6 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(appPresetOverrides, forKey: "appPresetOverrides") }
     }
 
-    /// UI theme selection
-    @Published var appTheme: AppTheme {
-        didSet { defaults.set(appTheme.rawValue, forKey: "appTheme") }
-    }
-
     /// Simple mode: all buttons use keyCombo or mediaKey (no AI search needed).
     /// When enabled, the pad can be flashed to work natively without the companion app.
     var isSimpleMode: Bool {
@@ -206,7 +201,7 @@ final class SudoSettings: ObservableObject {
         self.autoSwitchEnabled = defaults.object(forKey: "autoSwitchEnabled") == nil ? true : defaults.bool(forKey: "autoSwitchEnabled")
         self.categoryPresets = (defaults.dictionary(forKey: "categoryPresets") as? [String: String]) ?? Self.defaultCategoryPresets()
         self.appPresetOverrides = (defaults.dictionary(forKey: "appPresetOverrides") as? [String: String]) ?? [:]
-        self.appTheme = AppTheme(rawValue: defaults.string(forKey: "appTheme") ?? "terminal") ?? .terminal
+
         self.expandedSections = Set(defaults.stringArray(forKey: "expandedSections") ?? [])
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]

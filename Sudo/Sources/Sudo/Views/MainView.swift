@@ -7,18 +7,9 @@ struct MainView: View {
     @ObservedObject var rebuilder: DevRebuilder
     let onOpenConfig: () -> Void
 
-    @State private var scanLineOffset: CGFloat = 0
-
     var body: some View {
         ZStack {
-            // Main content
             mainContent
-
-            // Scan-line overlay (terminal theme only)
-            if SudoTheme.showScanLines {
-                ScanLineOverlay()
-                    .allowsHitTesting(false)
-            }
 
             // Processing glow overlay
             if engine.isProcessing {
@@ -32,13 +23,13 @@ struct MainView: View {
             // Success/failure flash overlay
             if engine.lastResult == .success {
                 Rectangle()
-                    .fill(SudoTheme.accent.opacity(0.06))
+                    .fill(SudoTheme.accent.opacity(0.03))
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                     .transition(.opacity)
             } else if engine.lastResult == .failure {
                 Rectangle()
-                    .fill(SudoTheme.error.opacity(0.06))
+                    .fill(SudoTheme.error.opacity(0.05))
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                     .transition(.opacity)
@@ -62,8 +53,8 @@ struct MainView: View {
                     .padding(.trailing, 6)
                     .accessibilityLabel(engine.isConnected ? "connected" : "disconnected")
                 Button(action: onOpenConfig) {
-                    Text("[=]")
-                        .font(SudoTheme.mono(size: 11))
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(SudoTheme.textMuted)
                 }
                 .buttonStyle(.plain)
@@ -97,7 +88,7 @@ struct MainView: View {
             if let switchStatus = engine.autoSwitchStatus {
                 HStack {
                     Text(switchStatus)
-                        .font(SudoTheme.mono(size: 9))
+                        .font(SudoTheme.label(size: 9))
                         .foregroundColor(SudoTheme.accent)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -112,29 +103,36 @@ struct MainView: View {
             HStack {
                 if SudoSettings.shared.isSimpleMode {
                     Text("mode:")
-                        .font(SudoTheme.mono(size: 9))
+                        .font(SudoTheme.label(size: 9))
                         .foregroundColor(SudoTheme.textMuted)
                     Text("simple")
                         .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.accent)
                     Text("·")
-                        .font(SudoTheme.mono(size: 9))
+                        .font(SudoTheme.label(size: 9))
                         .foregroundColor(SudoTheme.border)
                 } else {
-                    Text("app:")
-                        .font(SudoTheme.mono(size: 9))
+                    // Show target app (Sudo is frontmost when popover is open)
+                    Text("target:")
+                        .font(SudoTheme.label(size: 9))
                         .foregroundColor(SudoTheme.textMuted)
-                    Text(engine.detectedApp.lowercased())
-                        .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.text)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    if let target = engine.targetAppName {
+                        Text(target)
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.text)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } else {
+                        Text("none")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.warning)
+                    }
                     Text("·")
-                        .font(SudoTheme.mono(size: 9))
+                        .font(SudoTheme.label(size: 9))
                         .foregroundColor(SudoTheme.border)
                 }
                 Text("last:")
-                    .font(SudoTheme.mono(size: 9))
+                    .font(SudoTheme.label(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
                 if engine.isProcessing {
                     AnimatedDots()
@@ -155,16 +153,16 @@ struct MainView: View {
             if updater.updateAvailable {
                 HStack {
                     Text("update available: v\(updater.latestVersion)")
-                        .font(SudoTheme.mono(size: 9))
+                        .font(SudoTheme.label(size: 9))
                         .foregroundColor(SudoTheme.accent)
                     Spacer()
                     if updater.isUpdating {
                         Text("installing...")
-                            .font(SudoTheme.mono(size: 8))
+                            .font(SudoTheme.label(size: 8))
                             .foregroundColor(SudoTheme.textMuted)
                     } else {
-                        Button("[ install ]") { updater.installUpdate() }
-                            .font(SudoTheme.mono(size: 9))
+                        Button("install") { updater.installUpdate() }
+                            .font(SudoTheme.label(size: 9, weight: .medium))
                             .foregroundColor(SudoTheme.accent)
                             .buttonStyle(.plain)
                             .accessibilityLabel("install update")
@@ -178,13 +176,13 @@ struct MainView: View {
             // Stats
             HStack {
                 Text("\(SudoSettings.shared.totalPresses) presses · \(SudoSettings.shared.currentStreak) day streak")
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.surface)
+                    .font(SudoTheme.label(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
                     .lineLimit(1)
                 Spacer()
                 Text("v\(OTAUpdater.currentVersion)")
                     .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.surface)
+                    .foregroundColor(SudoTheme.textMuted)
                     .layoutPriority(1)
             }
             .padding(.horizontal, SudoTheme.spacingMd)
@@ -197,28 +195,28 @@ struct MainView: View {
                         rebuilder.rebuild()
                     }
                     .buttonStyle(.plain)
-                    .font(SudoTheme.mono(size: 9))
+                    .font(SudoTheme.label(size: 9))
                     .foregroundColor(rebuilder.isRebuilding ? SudoTheme.textMuted : SudoTheme.accent)
                     .disabled(rebuilder.isRebuilding)
 
                     Text("·")
-                        .font(SudoTheme.mono(size: 9))
+                        .font(SudoTheme.label(size: 9))
                         .foregroundColor(SudoTheme.border)
                 }
 
                 Button("updates") { updater.checkForUpdates() }
                     .buttonStyle(.plain)
-                    .font(SudoTheme.mono(size: 9))
+                    .font(SudoTheme.label(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
                     .accessibilityLabel("check for updates")
 
                 Text("·")
-                    .font(SudoTheme.mono(size: 9))
+                    .font(SudoTheme.label(size: 9))
                     .foregroundColor(SudoTheme.border)
 
                 Button("bug?") { BugReporter.shared.fileReport(engine: engine) }
                     .buttonStyle(.plain)
-                    .font(SudoTheme.mono(size: 9))
+                    .font(SudoTheme.label(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
                     .accessibilityLabel("report a bug")
 
@@ -247,7 +245,7 @@ struct MainView: View {
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(engine.axPermissionGranted ? SudoTheme.accent : SudoTheme.error)
                 Text("accessibility")
-                    .font(SudoTheme.mono(size: 9))
+                    .font(SudoTheme.label(size: 9))
                     .foregroundColor(SudoTheme.text)
                 Spacer()
                 Text(engine.axPermissionGranted ? "ok" : "denied")
@@ -256,22 +254,22 @@ struct MainView: View {
             }
 
             Text("toggle sudo off then on in accessibility settings")
-                .font(SudoTheme.mono(size: 8))
+                .font(SudoTheme.label(size: 8))
                 .foregroundColor(SudoTheme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
-                Button("[ open settings ]") {
+                Button("open settings") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                         NSWorkspace.shared.open(url)
                     }
                 }
-                .font(SudoTheme.mono(size: 9))
+                .font(SudoTheme.label(size: 9, weight: .medium))
                 .foregroundColor(SudoTheme.accent)
                 .buttonStyle(.plain)
 
-                Button("[ re-check ]") { engine.checkAndConnect() }
-                    .font(SudoTheme.mono(size: 9))
+                Button("re-check") { engine.checkAndConnect() }
+                    .font(SudoTheme.label(size: 9, weight: .medium))
                     .foregroundColor(SudoTheme.accent)
                     .buttonStyle(.plain)
             }
@@ -298,20 +296,20 @@ struct MainView: View {
     private func mcpOverlay(prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("mcp approval requested:")
-                .font(SudoTheme.mono(size: 9))
+                .font(SudoTheme.label(size: 9, weight: .medium))
                 .foregroundColor(SudoTheme.accent)
             Text(prompt)
                 .font(SudoTheme.mono(size: 9))
                 .foregroundColor(SudoTheme.text)
                 .lineLimit(3)
             HStack(spacing: 12) {
-                Button("[ approve ]") { engine.resolveMCPRequest(approved: true) }
-                    .font(SudoTheme.mono(size: 10))
+                Button("approve") { engine.resolveMCPRequest(approved: true) }
+                    .font(SudoTheme.label(size: 10, weight: .medium))
                     .foregroundColor(SudoTheme.accent)
                     .buttonStyle(.plain)
                     .accessibilityLabel("approve mcp request")
-                Button("[ reject ]") { engine.resolveMCPRequest(approved: false) }
-                    .font(SudoTheme.mono(size: 10))
+                Button("reject") { engine.resolveMCPRequest(approved: false) }
+                    .font(SudoTheme.label(size: 10, weight: .medium))
                     .foregroundColor(SudoTheme.error)
                     .buttonStyle(.plain)
                     .accessibilityLabel("reject mcp request")
@@ -319,21 +317,6 @@ struct MainView: View {
         }
         .padding(.horizontal, SudoTheme.spacingMd)
         .padding(.vertical, 8)
-    }
-}
-
-// MARK: - Scan Line Overlay
-
-/// Subtle CRT scan-line effect — alternating 1px lines at very low opacity
-struct ScanLineOverlay: View {
-    var body: some View {
-        Canvas { context, size in
-            for y in stride(from: 0, to: size.height, by: 3) {
-                let rect = CGRect(x: 0, y: y, width: size.width, height: 1)
-                context.fill(Path(rect), with: .color(.black.opacity(0.06)))
-            }
-        }
-        .drawingGroup()
     }
 }
 
