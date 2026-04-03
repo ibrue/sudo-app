@@ -330,17 +330,35 @@ final class SudoEngine: ObservableObject {
 
         // Check action mode — simple modes skip the AI search pipeline entirely
         let mode = SudoSettings.shared.actionMode(for: action)
-        let frontAppName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "system"
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let frontAppName = frontApp?.localizedName ?? "system"
+        let isSudoFrontmost = frontApp?.bundleIdentifier == Bundle.main.bundleIdentifier
 
         if mode == .keyCombo, let kc = SudoSettings.shared.keyCombo(for: action) {
+            // If triggered from Sudo's UI, activate the target app first
+            let targetName: String
+            if isSudoFrontmost {
+                guard let bid = currentBundleID,
+                      let targetApp = NSRunningApplication.runningApplications(withBundleIdentifier: bid).first else {
+                    finishAction(action: action, success: false, app: "none", method: "",
+                                 statusText: "\(action.displayName.lowercased()) — no target app")
+                    return
+                }
+                targetApp.activate()
+                usleep(100_000) // 100ms for app to come to front
+                targetName = targetApp.localizedName?.lowercased() ?? bid
+            } else {
+                targetName = frontAppName
+            }
             sendKeyComboDirect(keyCode: kc.keyCode, modifiers: kc.modifiers)
-            finishAction(action: action, success: true, app: frontAppName,
+            finishAction(action: action, success: true, app: targetName,
                          method: "keyCombo → \(action.displayName.lowercased())",
                          statusText: action.displayName.lowercased())
             return
         }
 
         if mode == .mediaKey, let kc = SudoSettings.shared.keyCombo(for: action) {
+            // Media keys are system-global, no need to activate target
             sendMediaKey(keyType: Int32(kc.keyCode))
             finishAction(action: action, success: true, app: frontAppName,
                          method: "mediaKey → \(action.displayName.lowercased())",

@@ -101,36 +101,32 @@ struct MainView: View {
 
             // Compact status line
             HStack {
-                if SudoSettings.shared.isSimpleMode {
-                    Text("mode:")
+                // Always show target (Sudo is frontmost when popover is open)
+                Text("target:")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+                if let target = engine.targetAppName {
+                    Text(target)
                         .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.textMuted)
+                        .foregroundColor(SudoTheme.text)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("none")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.warning)
+                }
+                if SudoSettings.shared.isSimpleMode {
+                    Text("·")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.border)
                     Text("simple")
                         .font(SudoTheme.mono(size: 9))
                         .foregroundColor(SudoTheme.accent)
-                    Text("·")
-                        .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.border)
-                } else {
-                    // Show target app (Sudo is frontmost when popover is open)
-                    Text("target:")
-                        .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.textMuted)
-                    if let target = engine.targetAppName {
-                        Text(target)
-                            .font(SudoTheme.mono(size: 9))
-                            .foregroundColor(SudoTheme.text)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    } else {
-                        Text("none")
-                            .font(SudoTheme.mono(size: 9))
-                            .foregroundColor(SudoTheme.warning)
-                    }
-                    Text("·")
-                        .font(SudoTheme.mono(size: 9))
-                        .foregroundColor(SudoTheme.border)
                 }
+                Text("·")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.border)
                 Text("last:")
                     .font(SudoTheme.mono(size: 9))
                     .foregroundColor(SudoTheme.textMuted)
