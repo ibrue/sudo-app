@@ -80,7 +80,7 @@ final class HotkeyListener {
             let requiredMods = binding["modifiers"] ?? 0
 
             if keyCode == bindingKeyCode && matchesModifiers(flags, required: requiredMods) {
-                print("[sudo] Received: \(action.displayName) (button \(action.buttonNumber), keyCode \(keyCode))")
+                DebugLogger.shared.log("pad input: button \(action.buttonNumber) (\(action.displayName)) keyCode=\(keyCode) flags=\(flags.rawValue)")
 
                 DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                     self?.handler?(action)

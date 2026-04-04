@@ -12,6 +12,7 @@ struct ConfigView: View {
     let onBack: () -> Void
 
     @ObservedObject var flasher = FirmwareFlasher.shared
+    @ObservedObject var debugLogger = DebugLogger.shared
 
     // Section toggles — persisted across popover open/close via SudoSettings.expandedSections
     private func sectionBinding(_ key: String) -> Binding<Bool> {
@@ -109,7 +110,13 @@ struct ConfigView: View {
                         if settings.expandedSections.contains("history") { historyContent }
                     }
 
-                    // 10. Plugins (conditional)
+                    // 10. Debug console
+                    section {
+                        SectionHeader("debug console", isExpanded: sectionBinding("debug"), count: debugLogger.entries.count)
+                        if settings.expandedSections.contains("debug") { debugContent }
+                    }
+
+                    // 11. Plugins (conditional)
                     if pluginManager.loadedPlugins.count > 0 {
                         section {
                             SectionHeader("plugins", isExpanded: .constant(true), count: pluginManager.loadedPlugins.count)
@@ -687,6 +694,64 @@ struct ConfigView: View {
             }
         }
     }
+
+    // MARK: - Debug Console
+
+    @ViewBuilder
+    private var debugContent: some View {
+        if debugLogger.entries.isEmpty {
+            Text("no logs yet — press a button").font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(debugLogger.entries) { entry in
+                            HStack(alignment: .top, spacing: 4) {
+                                let tf = Self.debugTimeFormatter
+                                Text(tf.string(from: entry.timestamp))
+                                    .font(SudoTheme.mono(size: 7))
+                                    .foregroundColor(SudoTheme.textMuted)
+                                    .frame(width: 55, alignment: .leading)
+                                Text(entry.message)
+                                    .font(SudoTheme.mono(size: 8))
+                                    .foregroundColor(
+                                        entry.message.hasPrefix("ERROR") ? SudoTheme.error :
+                                        entry.message.hasPrefix("OK") ? SudoTheme.accent :
+                                        SudoTheme.text
+                                    )
+                                    .lineLimit(3)
+                                    .textSelection(.enabled)
+                            }
+                            .id(entry.id)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .frame(maxHeight: 180)
+                .onChange(of: debugLogger.entries.count) { _ in
+                    if let last = debugLogger.entries.last {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+            HStack {
+                Button("clear") { debugLogger.clear() }
+                    .buttonStyle(.plain)
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
+                Spacer()
+                Text("\(debugLogger.entries.count) entries")
+                    .font(SudoTheme.mono(size: 8))
+                    .foregroundColor(SudoTheme.textMuted)
+            }
+        }
+    }
+
+    private static let debugTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
 
     // MARK: - Terminal
 

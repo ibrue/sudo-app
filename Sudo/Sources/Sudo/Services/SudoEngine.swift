@@ -316,16 +316,18 @@ final class SudoEngine: ObservableObject {
     }
 
     private func handleAction(_ action: PadAction) {
+        let log = DebugLogger.shared
         // Debounce: ignore rapid double-presses
         let now = Date()
         guard now.timeIntervalSince(lastActionTime) >= SudoSettings.shared.debounceDuration else {
-            print("[sudo] debounced: \(action.displayName.lowercased()) (too fast)")
+            log.log("debounced: \(action.displayName.lowercased()) (too fast)")
             return
         }
         lastActionTime = now
 
         // Check if this button has a macro assigned
         if !executingMacro, let macro = SudoSettings.shared.macros.first(where: { $0.assignedButton == action.rawValue }) {
+            log.log("running macro: \(macro.name)")
             executingMacro = true
             executeMacro(macro)
             executingMacro = false
@@ -336,23 +338,29 @@ final class SudoEngine: ObservableObject {
         let mode = SudoSettings.shared.actionMode(for: action)
         let frontApp = NSWorkspace.shared.frontmostApplication
         let frontAppName = frontApp?.localizedName ?? "system"
+        let frontBID = frontApp?.bundleIdentifier ?? "?"
         let isSudoFrontmost = frontApp?.bundleIdentifier == Bundle.main.bundleIdentifier
+
+        log.log("button \(action.buttonNumber) (\(action.displayName.lowercased())) → mode: \(mode.rawValue), front: \(frontAppName) [\(frontBID)]")
 
         if mode == .keyCombo, let kc = SudoSettings.shared.keyCombo(for: action) {
             // Resolve the target app — use saved bundleID when Sudo is frontmost
             let target: NSRunningApplication?
             if isSudoFrontmost, let bid = currentBundleID {
+                log.log("sudo is frontmost, using saved target: \(bid)")
                 target = NSRunningApplication.runningApplications(withBundleIdentifier: bid).first
             } else {
                 target = frontApp
             }
             guard let app = target else {
+                log.log("ERROR: no target app for keyCombo")
                 finishAction(action: action, success: false, app: "none", method: "",
                              statusText: "\(action.displayName.lowercased()) — no target app")
                 return
             }
             let targetName = app.localizedName?.lowercased() ?? "unknown"
             let appName = app.localizedName ?? "System Events"
+            log.log("sending keyCode=\(kc.keyCode) modifiers=\(kc.modifiers.rawValue) to \(appName)")
             sendKeyComboDirect(keyCode: kc.keyCode, modifiers: kc.modifiers, appName: appName)
             finishAction(action: action, success: true, app: targetName,
                          method: "keyCombo → \(action.displayName.lowercased())",
@@ -361,7 +369,7 @@ final class SudoEngine: ObservableObject {
         }
 
         if mode == .mediaKey, let kc = SudoSettings.shared.keyCombo(for: action) {
-            // Media keys are system-global, no need to activate target
+            log.log("sending mediaKey: type=\(kc.keyCode)")
             sendMediaKey(keyType: Int32(kc.keyCode))
             finishAction(action: action, success: true, app: frontAppName,
                          method: "mediaKey → \(action.displayName.lowercased())",
@@ -369,6 +377,7 @@ final class SudoEngine: ObservableObject {
             return
         }
 
+        log.log("entering AI search pipeline for \(action.displayName.lowercased())")
         PadCommunicator.shared.sendState(.processing)
 
         DispatchQueue.main.async {
@@ -576,15 +585,17 @@ final class SudoEngine: ObservableObject {
     /// Send a keyboard shortcut via osascript — activates the target app and sends the
     /// keystroke in one atomic script so there's no race between focus and input.
     private func sendKeyComboDirect(keyCode: UInt16, modifiers: CGEventFlags, appName: String = "System Events") {
+        let log = DebugLogger.shared
         let keystroke = buildKeystrokeCommand(keyCode: keyCode, modifiers: modifiers)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        // osascript needs separate -e for each statement
-        process.arguments = [
+        let args = [
             "-e", "tell application \"\(appName)\" to activate",
             "-e", "delay 0.15",
             "-e", "tell application \"System Events\" to \(keystroke)",
         ]
+        log.log("osascript: activate \"\(appName)\" → \(keystroke)")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = args
         let errPipe = Pipe()
         process.standardError = errPipe
         process.standardOutput = FileHandle.nullDevice
@@ -594,12 +605,12 @@ final class SudoEngine: ObservableObject {
             if process.terminationStatus != 0 {
                 let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
                 let errStr = String(data: errData, encoding: .utf8) ?? "unknown"
-                print("[sudo] osascript failed (\(process.terminationStatus)): \(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
+                log.log("ERROR osascript exit=\(process.terminationStatus): \(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
             } else {
-                print("[sudo] Sent keyCombo to \(appName): \(keystroke)")
+                log.log("OK sent \(keystroke) to \(appName)")
             }
         } catch {
-            print("[sudo] Failed to launch osascript: \(error)")
+            log.log("ERROR launching osascript: \(error)")
         }
     }
 
@@ -639,12 +650,12 @@ final class SudoEngine: ObservableObject {
                 try process.run()
                 process.waitUntilExit()
                 if process.terminationStatus == 0 {
-                    print("[sudo] Automation permission granted for System Events")
+                    DebugLogger.shared.log("Automation permission: granted")
                 } else {
-                    print("[sudo] Automation permission not yet granted — enable in Privacy & Security → Automation")
+                    DebugLogger.shared.log("Automation permission: NOT granted — enable in Privacy & Security → Automation")
                 }
             } catch {
-                print("[sudo] Could not check Automation permission: \(error)")
+                DebugLogger.shared.log("Automation permission check failed: \(error)")
             }
         }
     }
