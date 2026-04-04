@@ -74,6 +74,8 @@ cat > "$CONTENTS/Info.plist" << PLIST
     <true/>
     <key>NSSupportsAutomaticTermination</key>
     <false/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Sudo needs Automation permission to send keyboard shortcuts (like Cmd+R) to apps when using simple mode presets.</string>
 </dict>
 </plist>
 PLIST
@@ -83,9 +85,10 @@ echo "[sudo] Code signing..."
 codesign --force --deep --sign - "$APP_DIR"
 echo "[sudo] Signed (ad-hoc)"
 
-# Reset accessibility TCC entry so macOS re-trusts the new binary
+# Reset TCC entries so macOS re-trusts the new binary
 tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null || true
-echo "[sudo] Reset accessibility trust (toggle sudo in settings to re-grant)"
+tccutil reset AppleEvents "$BUNDLE_ID" 2>/dev/null || true
+echo "[sudo] Reset accessibility + automation trust (re-grant in settings)"
 
 echo ""
 echo "[sudo] Build successful: $APP_DIR"
