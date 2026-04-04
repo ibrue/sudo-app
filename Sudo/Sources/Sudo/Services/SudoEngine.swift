@@ -352,12 +352,8 @@ final class SudoEngine: ObservableObject {
                 return
             }
             let targetName = app.localizedName?.lowercased() ?? "unknown"
-            // Ensure target app has keyboard focus before sending
-            if !app.isActive {
-                app.activate()
-                usleep(150_000)
-            }
-            sendKeyComboDirect(keyCode: kc.keyCode, modifiers: kc.modifiers)
+            let appName = app.localizedName ?? "System Events"
+            sendKeyComboDirect(keyCode: kc.keyCode, modifiers: kc.modifiers, appName: appName)
             finishAction(action: action, success: true, app: targetName,
                          method: "keyCombo → \(action.displayName.lowercased())",
                          statusText: action.displayName.lowercased())
@@ -577,13 +573,18 @@ final class SudoEngine: ObservableObject {
         print("[sudo] Sent keyCode \(keyCode) to PID \(pid)")
     }
 
-    /// Send a keyboard shortcut via osascript subprocess (thread-safe, no NSAppleScript issues).
-    /// Uses System Events keystroke — the most reliable way to send shortcuts on macOS.
-    private func sendKeyComboDirect(keyCode: UInt16, modifiers: CGEventFlags) {
+    /// Send a keyboard shortcut via osascript — activates the target app and sends the
+    /// keystroke in one atomic script so there's no race between focus and input.
+    private func sendKeyComboDirect(keyCode: UInt16, modifiers: CGEventFlags, appName: String = "System Events") {
         let keystroke = buildKeystrokeCommand(keyCode: keyCode, modifiers: modifiers)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", "tell application \"System Events\" to \(keystroke)"]
+        // osascript needs separate -e for each statement
+        process.arguments = [
+            "-e", "tell application \"\(appName)\" to activate",
+            "-e", "delay 0.15",
+            "-e", "tell application \"System Events\" to \(keystroke)",
+        ]
         let errPipe = Pipe()
         process.standardError = errPipe
         process.standardOutput = FileHandle.nullDevice
@@ -595,7 +596,7 @@ final class SudoEngine: ObservableObject {
                 let errStr = String(data: errData, encoding: .utf8) ?? "unknown"
                 print("[sudo] osascript failed (\(process.terminationStatus)): \(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
             } else {
-                print("[sudo] Sent keyCombo via osascript: \(keystroke)")
+                print("[sudo] Sent keyCombo to \(appName): \(keystroke)")
             }
         } catch {
             print("[sudo] Failed to launch osascript: \(error)")
