@@ -129,6 +129,24 @@ final class SudoConfigJSONTests: XCTestCase {
         XCTAssertEqual(SudoConfigJSON.macOSKeyCodeToHID(107), 0x69) // F14
         XCTAssertEqual(SudoConfigJSON.macOSKeyCodeToHID(113), 0x6A) // F15
         XCTAssertEqual(SudoConfigJSON.macOSKeyCodeToHID(106), 0x6B) // F16
+        XCTAssertEqual(SudoConfigJSON.macOSKeyCodeToHID(64), 0x6C)  // F17
+        XCTAssertEqual(SudoConfigJSON.macOSKeyCodeToHID(79), 0x6D)  // F18
+        XCTAssertEqual(SudoConfigJSON.macOSKeyCodeToHID(80), 0x6E)  // F19
+        XCTAssertEqual(SudoConfigJSON.macOSKeyCodeToHID(90), 0x6F)  // F20
+    }
+
+    // MARK: - Default hotkey bindings
+
+    func testDefaultHotkeyBindingsAvoidF14F15() {
+        // F14 (107) and F15 (113) trigger system brightness on macOS even
+        // with modifiers held. Defaults must not use them.
+        let bindings = SudoSettings.defaultHotkeyBindings
+        for (action, binding) in bindings {
+            XCTAssertNotEqual(binding["keyCode"], 107,
+                              "\(action) default uses F14 — moves to brightness")
+            XCTAssertNotEqual(binding["keyCode"], 113,
+                              "\(action) default uses F15 — moves to brightness")
+        }
     }
 
     func testMacOSKeyCodeToHIDUnknownReturnsZero() {

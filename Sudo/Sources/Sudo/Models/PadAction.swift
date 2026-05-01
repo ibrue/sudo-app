@@ -7,12 +7,16 @@ enum PadAction: String, CaseIterable {
     case action3 = "action3"
     case action4 = "action4"
 
-    /// The hotkey combo sent by the RP2040 for each button
+    /// The hotkey combo sent by the RP2040 for each button (macOS virtual keycodes).
+    ///
+    /// Avoids F14 (107) and F15 (113) — macOS treats those as display-brightness
+    /// keys on Apple-style keyboards even with modifiers. F17/F18 are unclaimed
+    /// by the system, so they survive the trip from firmware → HotkeyListener.
     var keyCode: UInt16 {
         switch self {
         case .approve: return 105  // F13
-        case .reject:  return 107  // F14
-        case .action3: return 113  // F15
+        case .reject:  return 64   // F17
+        case .action3: return 79   // F18
         case .action4: return 106  // F16
         }
     }
@@ -20,8 +24,8 @@ enum PadAction: String, CaseIterable {
     var fKeyNumber: Int {
         switch self {
         case .approve: return 13
-        case .reject:  return 14
-        case .action3: return 15
+        case .reject:  return 17
+        case .action3: return 18
         case .action4: return 16
         }
     }

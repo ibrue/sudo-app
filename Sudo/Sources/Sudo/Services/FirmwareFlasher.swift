@@ -262,20 +262,23 @@ final class FirmwareFlasher: ObservableObject {
 # sudo macropad firmware — CircuitPython
 #
 # Lives at /code.py on the CIRCUITPY mass-storage volume. Reads /config.json
-# for per-button mappings; falls back to F13–F16 + ctrl+shift if missing.
+# for per-button mappings; falls back to F13/F17/F18/F16 + ctrl+shift if
+# missing.
 #
-# Hardware (matches sudo-supply.kicad_sch):
+# Hardware:
 #   GP0–GP3   buttons 1–4 (active-low, internal pull-up)
-#   GP24      LED2 (under-glow)
-#   GP25      LED1 (under-glow)
+#   GP24      LED2 (under-glow, PWM)
+#   GP25      LED1 (under-glow, PWM)
 #
-# Uses only built-in CircuitPython modules (`usb_hid`, `digitalio`,
-# `supervisor`) — sends raw HID reports rather than depending on the
-# adafruit_hid library, so there's nothing to install in /lib/.
+# Why F13/F17/F18/F16 instead of F13–F16 in default mode:
+#   macOS treats raw F14 / F15 as display-brightness keys on Apple-style
+#   keyboards even when modifiers are present. F17/F18 (0x6C / 0x6D) are
+#   unclaimed by the system, so the keystrokes survive to HotkeyListener.
 
 import board
 import digitalio
 import json
+import pwmio
 import supervisor
 import time
 import usb_hid
@@ -293,7 +296,8 @@ for _device in usb_hid.devices:
 
 # Pin map
 BUTTON_PINS = (board.GP0, board.GP1, board.GP2, board.GP3)
-LED_PINS = (board.GP25, board.GP24)
+LED_PIN_1 = board.GP25
+LED_PIN_2 = board.GP24
 
 
 def _make_input(pin):
@@ -303,23 +307,17 @@ def _make_input(pin):
     return p
 
 
-def _make_output(pin):
-    p = digitalio.DigitalInOut(pin)
-    p.direction = digitalio.Direction.OUTPUT
-    p.value = False
-    return p
-
-
 buttons = [_make_input(pin) for pin in BUTTON_PINS]
-leds = [_make_output(pin) for pin in LED_PINS]
+led1 = pwmio.PWMOut(LED_PIN_1, frequency=1000, duty_cycle=0)
+led2 = pwmio.PWMOut(LED_PIN_2, frequency=1000, duty_cycle=0)
 
 
 # Config
 DEFAULT_BUTTONS = [
-    {"mode": "keycombo", "keycode": 0x68, "modifiers": 0x03, "name": "button 1"},
-    {"mode": "keycombo", "keycode": 0x6A, "modifiers": 0x03, "name": "button 2"},
-    {"mode": "keycombo", "keycode": 0x69, "modifiers": 0x03, "name": "button 3"},
-    {"mode": "keycombo", "keycode": 0x6B, "modifiers": 0x03, "name": "button 4"},
+    {"mode": "keycombo", "keycode": 0x68, "modifiers": 0x03, "name": "button 1"},  # F13
+    {"mode": "keycombo", "keycode": 0x6D, "modifiers": 0x03, "name": "button 2"},  # F18
+    {"mode": "keycombo", "keycode": 0x6C, "modifiers": 0x03, "name": "button 3"},  # F17
+    {"mode": "keycombo", "keycode": 0x6B, "modifiers": 0x03, "name": "button 4"},  # F16
 ]
 
 
@@ -342,13 +340,13 @@ button_configs = load_config()
 def _send_keyboard(modifier, keycode):
     if keyboard_device is None:
         return
-    report = bytearray(8)
-    report[0] = modifier & 0xFF
-    if keycode:
-        report[2] = keycode & 0xFF
     try:
+        report = bytearray(8)
+        report[0] = modifier & 0xFF
+        if keycode:
+            report[2] = keycode & 0xFF
         keyboard_device.send_report(report)
-    except OSError:
+    except Exception:  # noqa: BLE001 — never let a USB hiccup kill the loop
         pass
 
 
@@ -357,21 +355,21 @@ def _release_keyboard():
         return
     try:
         keyboard_device.send_report(bytearray(8))
-    except OSError:
+    except Exception:  # noqa: BLE001
         pass
 
 
 def _send_consumer(usage):
     if consumer_device is None:
         return
-    pressed = bytearray(2)
-    pressed[0] = usage & 0xFF
-    pressed[1] = (usage >> 8) & 0xFF
     try:
+        pressed = bytearray(2)
+        pressed[0] = usage & 0xFF
+        pressed[1] = (usage >> 8) & 0xFF
         consumer_device.send_report(pressed)
         time.sleep(0.01)
         consumer_device.send_report(bytearray(2))
-    except OSError:
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -400,33 +398,74 @@ def dispatch(idx):
             _send_consumer(usage)
 
 
-def leds_set(on):
-    for led in leds:
-        led.value = on
+# Non-blocking LED animation state machine
+ANIM_RAMP_UP_MS = 80
+ANIM_RAMP_DOWN_MS = 200
+ANIM_TOTAL_MS = ANIM_RAMP_UP_MS + ANIM_RAMP_DOWN_MS
+
+_anim_active = False
+_anim_started_at = 0
+
+
+def trigger_animation():
+    global _anim_active, _anim_started_at
+    _anim_active = True
+    _anim_started_at = supervisor.ticks_ms()
+
+
+def update_animation():
+    global _anim_active
+    if not _anim_active:
+        return
+    elapsed = supervisor.ticks_diff(supervisor.ticks_ms(), _anim_started_at)
+    if elapsed < 0:
+        elapsed = 0
+    if elapsed < ANIM_RAMP_UP_MS:
+        level = int((elapsed / ANIM_RAMP_UP_MS) * 65535)
+    elif elapsed < ANIM_TOTAL_MS:
+        progress = (elapsed - ANIM_RAMP_UP_MS) / ANIM_RAMP_DOWN_MS
+        level = int((1.0 - progress) * 65535)
+    else:
+        level = 0
+        _anim_active = False
+    led1.duty_cycle = level
+    led2.duty_cycle = level
+
+
+def leds_off():
+    led1.duty_cycle = 0
+    led2.duty_cycle = 0
 
 
 # Main loop
 DEBOUNCE_MS = 20
 last_state = [True] * 4
 debounce_until = [0] * 4
+leds_off()
 
-leds_set(False)
-
+# Top-level try/except so a transient USB blip can't silently kill the
+# firmware. Without this, any uncaught exception (USB suspend race,
+# memory hiccup, etc.) drops to the REPL and the device stops responding.
 while True:
-    now = supervisor.ticks_ms()
-    for i in range(4):
-        if now - debounce_until[i] < 0:
-            continue
-        state = buttons[i].value
-        if state != last_state[i]:
-            last_state[i] = state
-            debounce_until[i] = now + DEBOUNCE_MS
-            if not state:
-                leds_set(True)
-                dispatch(i)
-                time.sleep(0.05)
-                leds_set(False)
-    time.sleep(0.005)
+    try:
+        now = supervisor.ticks_ms()
+        update_animation()
+        for i in range(4):
+            if supervisor.ticks_diff(now, debounce_until[i]) < 0:
+                continue
+            state = buttons[i].value
+            if state != last_state[i]:
+                last_state[i] = state
+                debounce_until[i] = now + DEBOUNCE_MS
+                if not state:
+                    trigger_animation()
+                    dispatch(i)
+        time.sleep(0.005)
+    except Exception:  # noqa: BLE001
+        try:
+            time.sleep(0.1)
+        except Exception:  # noqa: BLE001
+            pass
 """#
 
     // MARK: - Copy helpers

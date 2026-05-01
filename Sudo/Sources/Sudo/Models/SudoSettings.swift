@@ -272,7 +272,8 @@ final class SudoSettings: ObservableObject {
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
         self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]
-        self.hotkeyBindings = (defaults.dictionary(forKey: "hotkeyBindings") as? [String: [String: Int]]) ?? Self.defaultHotkeyBindings
+        let savedBindings = (defaults.dictionary(forKey: "hotkeyBindings") as? [String: [String: Int]]) ?? Self.defaultHotkeyBindings
+        self.hotkeyBindings = Self.migrateBrightnessConflicts(savedBindings)
         self.buttonNames = (defaults.dictionary(forKey: "buttonNames") as? [String: String]) ?? [:]
         if let data = defaults.data(forKey: "buttonSearchTerms"),
            let terms = try? JSONDecoder().decode([String: [String]].self, from: data) {
@@ -444,16 +445,42 @@ final class SudoSettings: ObservableObject {
         lastActiveDate = today
     }
 
-    /// Default hotkey bindings: Ctrl+Shift+F13-F16
+    /// Default hotkey bindings: Ctrl+Shift+F13/F17/F18/F16.
+    ///
+    /// F14 (107) and F15 (113) are avoided here even though they were the
+    /// historical defaults — macOS interprets them as display-brightness
+    /// keys on Apple-style keyboards even when modifiers are held. Switching
+    /// to F17/F18 for the two middle buttons keeps the keystrokes from being
+    /// swallowed by the system before HotkeyListener sees them.
     static let defaultHotkeyBindings: [String: [String: Int]] = {
         let ctrlShift = Int(CGEventFlags.maskControl.rawValue | CGEventFlags.maskShift.rawValue)
         return [
             "approve": ["keyCode": 105, "modifiers": ctrlShift],  // F13
-            "reject":  ["keyCode": 107, "modifiers": ctrlShift],  // F14
-            "action3": ["keyCode": 113, "modifiers": ctrlShift],  // F15
+            "reject":  ["keyCode": 64,  "modifiers": ctrlShift],  // F17
+            "action3": ["keyCode": 79,  "modifiers": ctrlShift],  // F18
             "action4": ["keyCode": 106, "modifiers": ctrlShift],  // F16
         ]
     }()
+
+    /// Migrate any persisted hotkey binding using F14 (107) or F15 (113) to
+    /// their F17/F18 replacements. Preserves the user's modifier choice;
+    /// only swaps the keycode. Run once from `init`.
+    private static func migrateBrightnessConflicts(
+        _ bindings: [String: [String: Int]]
+    ) -> [String: [String: Int]] {
+        var migrated = bindings
+        for (action, binding) in bindings {
+            let kc = binding["keyCode"] ?? 0
+            if kc == 107 {
+                migrated[action] = ["keyCode": 64,
+                                    "modifiers": binding["modifiers"] ?? 0]
+            } else if kc == 113 {
+                migrated[action] = ["keyCode": 79,
+                                    "modifiers": binding["modifiers"] ?? 0]
+            }
+        }
+        return migrated
+    }
 
     func resetHotkeyBindings() {
         hotkeyBindings = Self.defaultHotkeyBindings

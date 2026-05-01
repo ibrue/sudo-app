@@ -108,11 +108,16 @@ enum SudoConfigJSON {
         }
     }
 
+    /// HID usage codes for the four passthrough F-keys. We deliberately skip
+    /// 0x69 (F14) and 0x6A (F15) — macOS treats those as display-brightness
+    /// keys on Apple-style keyboards even with modifiers, so the keystrokes
+    /// would be swallowed before HotkeyListener saw them. F17/F18 (0x6C/0x6D)
+    /// are unclaimed by the OS.
     private static func fKeyHID(action: PadAction) -> UInt8 {
         switch action {
         case .approve: return 0x68  // F13
-        case .reject:  return 0x69  // F14
-        case .action3: return 0x6A  // F15
+        case .reject:  return 0x6C  // F17
+        case .action3: return 0x6D  // F18
         case .action4: return 0x6B  // F16
         }
     }
@@ -183,6 +188,10 @@ enum SudoConfigJSON {
         case 106: return 0x6B  // F16
         case 107: return 0x69  // F14
         case 113: return 0x6A  // F15
+        case 64:  return 0x6C  // F17
+        case 79:  return 0x6D  // F18
+        case 80:  return 0x6E  // F19
+        case 90:  return 0x6F  // F20
         case 122: return 0x3A  // F1
         case 97:  return 0x3F  // F6
         default:  return 0
