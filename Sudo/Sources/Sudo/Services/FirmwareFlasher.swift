@@ -263,12 +263,12 @@ final class FirmwareFlasher: ObservableObject {
 #
 # Lives at /code.py on the CIRCUITPY mass-storage volume. Reads /config.json
 # for per-button mappings; falls back to F13/F17/F18/F16 + ctrl+shift if
-# missing.
+# the file is missing or malformed.
 #
 # Hardware:
 #   GP0–GP3   buttons 1–4 (active-low, internal pull-up)
-#   GP24      LED2 (under-glow, PWM)
-#   GP25      LED1 (under-glow, PWM)
+#   GP24      LED2 (under-glow)
+#   GP25      LED1 (under-glow / Pico onboard LED)
 #
 # Why F13/F17/F18/F16 instead of F13–F16 in default mode:
 #   macOS treats raw F14 / F15 as display-brightness keys on Apple-style
@@ -278,7 +278,6 @@ final class FirmwareFlasher: ObservableObject {
 import board
 import digitalio
 import json
-import pwmio
 import supervisor
 import time
 import usb_hid
@@ -307,9 +306,23 @@ def _make_input(pin):
     return p
 
 
+def _make_output(pin):
+    p = digitalio.DigitalInOut(pin)
+    p.direction = digitalio.Direction.OUTPUT
+    p.value = False
+    return p
+
+
 buttons = [_make_input(pin) for pin in BUTTON_PINS]
-led1 = pwmio.PWMOut(LED_PIN_1, frequency=1000, duty_cycle=0)
-led2 = pwmio.PWMOut(LED_PIN_2, frequency=1000, duty_cycle=0)
+
+# Plain digital LEDs — no PWM, no animation. try/except so a pin-allocation
+# hiccup can't kill the whole firmware.
+try:
+    led1 = _make_output(LED_PIN_1)
+    led2 = _make_output(LED_PIN_2)
+    _leds_ok = True
+except Exception:  # noqa: BLE001
+    _leds_ok = False
 
 
 # Config
@@ -336,7 +349,7 @@ def load_config():
 button_configs = load_config()
 
 
-# HID send helpers — raw reports, no adafruit_hid dependency.
+# HID send helpers
 def _send_keyboard(modifier, keycode):
     if keyboard_device is None:
         return
@@ -346,7 +359,7 @@ def _send_keyboard(modifier, keycode):
         if keycode:
             report[2] = keycode & 0xFF
         keyboard_device.send_report(report)
-    except Exception:  # noqa: BLE001 — never let a USB hiccup kill the loop
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -398,68 +411,58 @@ def dispatch(idx):
             _send_consumer(usage)
 
 
-# Non-blocking LED animation state machine
-ANIM_RAMP_UP_MS = 80
-ANIM_RAMP_DOWN_MS = 200
-ANIM_TOTAL_MS = ANIM_RAMP_UP_MS + ANIM_RAMP_DOWN_MS
-
-_anim_active = False
-_anim_started_at = 0
+# LED feedback — non-blocking. Flash both LEDs for LED_FLASH_MS on press.
+LED_FLASH_MS = 120
+_led_off_at = 0
 
 
-def trigger_animation():
-    global _anim_active, _anim_started_at
-    _anim_active = True
-    _anim_started_at = supervisor.ticks_ms()
-
-
-def update_animation():
-    global _anim_active
-    if not _anim_active:
+def flash_leds():
+    global _led_off_at
+    if not _leds_ok:
         return
-    elapsed = supervisor.ticks_diff(supervisor.ticks_ms(), _anim_started_at)
-    if elapsed < 0:
-        elapsed = 0
-    if elapsed < ANIM_RAMP_UP_MS:
-        level = int((elapsed / ANIM_RAMP_UP_MS) * 65535)
-    elif elapsed < ANIM_TOTAL_MS:
-        progress = (elapsed - ANIM_RAMP_UP_MS) / ANIM_RAMP_DOWN_MS
-        level = int((1.0 - progress) * 65535)
-    else:
-        level = 0
-        _anim_active = False
-    led1.duty_cycle = level
-    led2.duty_cycle = level
+    try:
+        led1.value = True
+        led2.value = True
+        _led_off_at = supervisor.ticks_ms() + LED_FLASH_MS
+    except Exception:  # noqa: BLE001
+        pass
 
 
-def leds_off():
-    led1.duty_cycle = 0
-    led2.duty_cycle = 0
+def update_leds():
+    global _led_off_at
+    if not _leds_ok or _led_off_at == 0:
+        return
+    try:
+        if supervisor.ticks_diff(supervisor.ticks_ms(), _led_off_at) >= 0:
+            led1.value = False
+            led2.value = False
+            _led_off_at = 0
+    except Exception:  # noqa: BLE001
+        _led_off_at = 0
 
 
 # Main loop
 DEBOUNCE_MS = 20
 last_state = [True] * 4
 debounce_until = [0] * 4
-leds_off()
 
-# Top-level try/except so a transient USB blip can't silently kill the
-# firmware. Without this, any uncaught exception (USB suspend race,
-# memory hiccup, etc.) drops to the REPL and the device stops responding.
 while True:
     try:
         now = supervisor.ticks_ms()
-        update_animation()
+
+        update_leds()
+
         for i in range(4):
             if supervisor.ticks_diff(now, debounce_until[i]) < 0:
                 continue
-            state = buttons[i].value
+            state = buttons[i].value  # True = released
             if state != last_state[i]:
                 last_state[i] = state
                 debounce_until[i] = now + DEBOUNCE_MS
                 if not state:
-                    trigger_animation()
+                    flash_leds()
                     dispatch(i)
+
         time.sleep(0.005)
     except Exception:  # noqa: BLE001
         try:
