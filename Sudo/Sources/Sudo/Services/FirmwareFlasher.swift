@@ -285,14 +285,16 @@ usb_cdc.enable(console=True, data=True)
     private static let embeddedCodePy: String = #"""
 # sudo macropad firmware — CircuitPython
 #
-# Communication channels:
-#   usb_cdc.data    — primary path. Pad writes "PRESS <1-4>\n" lines on
-#                     each button press. Host app reads + dispatches per
-#                     app. Configured by boot.py.
-#   usb_hid         — secondary. In keycombo / mediakey modes the pad
-#                     ALSO types real keystrokes so it works standalone
-#                     without the app running. In passthrough (dynamic)
-#                     mode we skip HID entirely.
+# Communication:
+#   usb_cdc.console — REPL / debug. `screen /dev/tty.usbmodem<lower> 115200`
+#                     to watch the firmware narrate what it's doing.
+#   usb_cdc.data    — primary input path. Pad writes "PRESS <1-4>\n" lines
+#                     here on each button press; host app reads them and
+#                     dispatches per-app actions.
+#   usb_hid         — secondary. In keycombo / mediakey modes the pad ALSO
+#                     types real keystrokes so it works standalone without
+#                     the app. In passthrough mode (the "dynamic" app
+#                     mode) we skip HID entirely.
 
 import board
 import digitalio
@@ -303,17 +305,16 @@ import usb_cdc
 import usb_hid
 
 
-# Self-recovery: if boot.py was just written but the device hasn't fully
-# reset (auto-reload only re-runs code.py), the data channel won't exist.
-# Trigger a hardware reset so boot.py runs.
-if usb_cdc.data is None:
-    try:
-        with open("/boot.py", "r") as _f:
-            _f.read(1)
-        import microcontroller
-        microcontroller.reset()
-    except OSError:
-        pass
+def log(msg):
+    print("[sudo] " + msg)
+
+
+# Startup state report
+log("firmware booting")
+log("usb_cdc.console=%s usb_cdc.data=%s" % (
+    "ok" if usb_cdc.console is not None else "MISSING",
+    "ok" if usb_cdc.data is not None else "MISSING — boot.py probably hasn't run; unplug/replug",
+))
 
 
 serial = usb_cdc.data
@@ -328,6 +329,11 @@ for _device in usb_hid.devices:
     elif _device.usage_page == 0x0C and _device.usage == 0x01:
         consumer_device = _device
 
+log("hid keyboard=%s consumer=%s" % (
+    "ok" if keyboard_device else "MISSING",
+    "ok" if consumer_device else "MISSING",
+))
+
 
 BUTTON_PINS = (board.GP0, board.GP1, board.GP2, board.GP3)
 
@@ -340,6 +346,9 @@ def _make_input(pin):
 
 
 buttons = [_make_input(pin) for pin in BUTTON_PINS]
+log("buttons configured on GP0–GP3 (initial state: %s)" % (
+    [b.value for b in buttons],
+))
 
 
 # Default = passthrough on every button. App handles dispatch.
@@ -357,13 +366,19 @@ def load_config():
             data = json.load(f)
         cfg = data.get("buttons", DEFAULT_BUTTONS)
         if len(cfg) != 4:
+            log("config.json had %d buttons (expected 4); using defaults" % len(cfg))
             return DEFAULT_BUTTONS
         return cfg
-    except (OSError, ValueError):
+    except OSError:
+        log("config.json not found; using passthrough defaults")
+        return DEFAULT_BUTTONS
+    except ValueError as e:
+        log("config.json invalid (%s); using defaults" % e)
         return DEFAULT_BUTTONS
 
 
 button_configs = load_config()
+log("modes: %s" % [b.get("mode") for b in button_configs])
 
 
 def _send_keyboard(modifier, keycode):
@@ -375,8 +390,8 @@ def _send_keyboard(modifier, keycode):
         if keycode:
             report[2] = keycode & 0xFF
         keyboard_device.send_report(report)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        log("keyboard send failed: %s" % e)
 
 
 def _release_keyboard():
@@ -398,17 +413,22 @@ def _send_consumer(usage):
         consumer_device.send_report(pressed)
         time.sleep(0.01)
         consumer_device.send_report(bytearray(2))
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        log("consumer send failed: %s" % e)
 
 
-def _send_press(idx):
+def _send_press(button_num):
     if serial is None:
+        log("PRESS %d → DROPPED (usb_cdc.data unavailable)" % button_num)
         return
+    if not serial.connected:
+        log("PRESS %d → host not connected to data port" % button_num)
     try:
-        serial.write(("PRESS %d\n" % (idx + 1)).encode("utf-8"))
-    except Exception:  # noqa: BLE001
-        pass
+        n = serial.write(("PRESS %d\n" % button_num).encode("utf-8"))
+        log("PRESS %d → wrote %d bytes (connected=%s)" % (
+            button_num, n, serial.connected))
+    except Exception as e:  # noqa: BLE001
+        log("PRESS %d → write failed: %s" % (button_num, e))
 
 
 _CONSUMER_CODES = {
@@ -423,9 +443,12 @@ _CONSUMER_CODES = {
 def dispatch(idx):
     cfg = button_configs[idx]
     mode = cfg.get("mode", "passthrough")
+    button_num = idx + 1
+
+    log("button %d pressed (mode=%s)" % (button_num, mode))
 
     if mode == "passthrough":
-        _send_press(idx)
+        _send_press(button_num)
     elif mode == "keycombo":
         keycode = cfg.get("keycode", 0)
         modifiers = cfg.get("modifiers", 0)
@@ -437,12 +460,16 @@ def dispatch(idx):
         usage = _CONSUMER_CODES.get(keycode, 0)
         if usage:
             _send_consumer(usage)
+    else:
+        log("unknown mode %r — ignoring press" % mode)
 
 
 # Main loop
 DEBOUNCE_MS = 20
 last_state = [True] * 4
 debounce_until = [0] * 4
+
+log("entering main loop")
 
 while True:
     try:
@@ -457,8 +484,9 @@ while True:
                 if not state:
                     dispatch(i)
         time.sleep(0.005)
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         try:
+            log("main loop exception: %s — continuing" % e)
             time.sleep(0.1)
         except Exception:  # noqa: BLE001
             pass
