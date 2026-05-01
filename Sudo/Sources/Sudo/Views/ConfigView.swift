@@ -309,6 +309,25 @@ struct ConfigView: View {
 
     @ViewBuilder
     private var remapContent: some View {
+        // Wizard launcher — guided 4-step editor in its own window
+        Button(action: { EditPresetWindowManager.shared.open() }) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 11))
+                Text("walk through all 4 buttons")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(SudoTheme.accent.opacity(0.12))
+            )
+            .foregroundStyle(SudoTheme.accent)
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 4)
+
         // Quick presets
         Text("quick presets:")
             .font(SudoTheme.mono(size: 9))

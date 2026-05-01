@@ -298,7 +298,10 @@ for d in usb_hid.devices:
         consumer = d
 
 
-PINS = (board.GP0, board.GP1, board.GP2, board.GP3)
+# Pin order = physical bottom → top (matches PadAction.physicalOrder on
+# the app side). The hardware wires GP3 to the bottom switch, so going
+# numeric here would flip the indexes from what the app shows.
+PINS = (board.GP3, board.GP2, board.GP1, board.GP0)
 buttons = []
 for pin in PINS:
     p = digitalio.DigitalInOut(pin)

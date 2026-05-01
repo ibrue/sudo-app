@@ -1,9 +1,10 @@
 import SwiftUI
+import Cocoa
 
-/// First-launch walkthrough. Four steps, each auto-checks its own
-/// completion condition (no "click next when done" — we just look at
-/// engine + flasher state). The user dismisses with `[ start using sudo ]`
-/// when everything's green, or `skip` to bail early.
+/// First-launch walkthrough. Each step auto-checks its own completion
+/// condition off engine + flasher state — no "click next when done."
+/// Matches the v1.4 popover aesthetic: SF Pro body, glass cards, native
+/// macOS controls. The [sudo] mark is the only mono element.
 struct OnboardingView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var flasher: FirmwareFlasher = .shared
@@ -24,10 +25,10 @@ struct OnboardingView: View {
 
         var hint: String {
             switch self {
-            case .accessibility: return "sudo listens for the macropad's hotkeys at the system level. requires accessibility access."
-            case .plugIn:        return "USB-C in. on a fresh board, hold BOOTSEL while plugging in. on already-flashed boards, just plug it in."
-            case .flash:         return "writes CircuitPython + your config. ~5 seconds on first run. you can do this later from the menu bar."
-            case .test:          return "tap any button on the pad — or click a row in the menu bar — to confirm presses register."
+            case .accessibility: return "sudo listens for the macropad's hotkeys at the system level."
+            case .plugIn:        return "USB-C in. on a fresh board, hold BOOTSEL while plugging in."
+            case .flash:         return "writes CircuitPython + your config. ~5 seconds."
+            case .test:          return "tap any button on the pad to confirm presses register."
             }
         }
     }
@@ -36,12 +37,9 @@ struct OnboardingView: View {
         switch step {
         case .accessibility: return engine.axPermissionGranted
         case .plugIn:
-            // Either a CircuitPython device is mounted, or BOOTSEL is mounted.
             return flasher.deviceConnectionLabel.label.contains("connected")
                 || flasher.deviceConnectionLabel.label.contains("BOOTSEL")
         case .flash:
-            // Mark complete if the device is currently running CircuitPython
-            // (which is the post-flash state) or if a flash just succeeded.
             switch flasher.state {
             case .readyForConfig, .success: return true
             default: return false
@@ -51,65 +49,61 @@ struct OnboardingView: View {
         }
     }
 
-    private var allComplete: Bool {
-        Step.allCases.allSatisfy(isComplete)
-    }
+    private var allComplete: Bool { Step.allCases.allSatisfy(isComplete) }
+    private var remaining: Int { Step.allCases.filter { !isComplete($0) }.count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack {
-                Text("[sudo]")
-                    .font(SudoTheme.mono(size: 14, weight: .bold))
-                    .foregroundColor(SudoTheme.accent)
-                Spacer()
-                Button("skip") { dismiss() }
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.textMuted)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("skip onboarding")
-            }
-            .padding(.horizontal, SudoTheme.spacingMd)
-            .padding(.top, 14)
-            .padding(.bottom, 6)
+            header
 
-            Text("welcome — let's get you set up")
-                .font(SudoTheme.mono(size: 11))
-                .foregroundColor(SudoTheme.text)
-                .padding(.horizontal, SudoTheme.spacingMd)
-                .padding(.bottom, 10)
+            Text("welcome — let's get you set up.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
 
-            SudoDivider()
-
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 8) {
                 ForEach(Step.allCases, id: \.rawValue) { step in
                     stepRow(step)
                 }
             }
-            .padding(SudoTheme.spacingMd)
+            .padding(.horizontal, 12)
 
-            SudoDivider()
+            Spacer(minLength: 12)
 
             HStack {
                 Spacer()
                 Button(action: dismiss) {
-                    Text(allComplete ? "[ start using sudo ]" : "[ \(remainingCount) step\(remainingCount == 1 ? "" : "s") to go ]")
-                        .font(SudoTheme.mono(size: 11, weight: .bold))
-                        .foregroundColor(allComplete ? SudoTheme.accent : SudoTheme.textMuted)
+                    Text(allComplete ? "start using sudo" : "\(remaining) step\(remaining == 1 ? "" : "s") remaining")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .tint(SudoTheme.accent)
                 .disabled(!allComplete)
-                .accessibilityLabel(allComplete ? "start using sudo" : "complete remaining steps to continue")
                 Spacer()
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
         }
         .frame(width: 320)
-        .sudoBackground()
+        .background(.regularMaterial)
     }
 
-    private var remainingCount: Int {
-        Step.allCases.filter { !isComplete($0) }.count
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("[sudo]")
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SudoTheme.accent)
+
+            Spacer()
+
+            Button("skip") { dismiss() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
     }
 
     private func dismiss() {
@@ -120,43 +114,52 @@ struct OnboardingView: View {
     @ViewBuilder
     private func stepRow(_ step: Step) -> some View {
         let done = isComplete(step)
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(done ? SudoTheme.accent.opacity(0.15) : SudoTheme.border.opacity(0.3))
-                        .frame(width: 18, height: 18)
-                    Text(done ? "✓" : "\(step.rawValue + 1)")
-                        .font(SudoTheme.mono(size: 10, weight: .bold))
-                        .foregroundColor(done ? SudoTheme.accent : SudoTheme.textMuted)
+        HStack(alignment: .top, spacing: 10) {
+            // Status badge (number when pending, checkmark when done)
+            ZStack {
+                Circle()
+                    .fill(done ? SudoTheme.accent.opacity(0.18) : Color.primary.opacity(0.06))
+                    .frame(width: 22, height: 22)
+                if done {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(SudoTheme.accent)
+                } else {
+                    Text("\(step.rawValue + 1)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
-                Text(step.title)
-                    .font(SudoTheme.mono(size: 11, weight: done ? .regular : .semibold))
-                    .foregroundColor(done ? SudoTheme.textMuted : SudoTheme.text)
-                Spacer()
-                actionButton(for: step, done: done)
             }
-            Text(step.hint)
-                .font(SudoTheme.mono(size: 9))
-                .foregroundColor(SudoTheme.textMuted)
-                .padding(.leading, 26)
-                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(step.title)
+                    .font(.system(size: 12, weight: done ? .regular : .semibold))
+                    .foregroundStyle(done ? .secondary : .primary)
+                    .strikethrough(done, color: .secondary)
+                Text(step.hint)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            actionButton(for: step, done: done)
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 6)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(done ? Color.clear : SudoTheme.accent.opacity(0.04))
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.thinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
         )
     }
 
     @ViewBuilder
     private func actionButton(for step: Step, done: Bool) -> some View {
-        if done {
-            Text("done")
-                .font(SudoTheme.mono(size: 8))
-                .foregroundColor(SudoTheme.accent)
-        } else {
+        if done { EmptyView() } else {
             switch step {
             case .accessibility:
                 Button("open settings") {
@@ -164,19 +167,17 @@ struct OnboardingView: View {
                         NSWorkspace.shared.open(url)
                     }
                 }
-                .font(SudoTheme.mono(size: 9, weight: .medium))
-                .foregroundColor(SudoTheme.accent)
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             case .plugIn:
                 Button("scan") { flasher.detectDevice() }
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.accent)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             case .flash:
                 Button("flash") { flasher.flashFirmwareAndConfig() }
-                    .font(SudoTheme.mono(size: 9, weight: .medium))
-                    .foregroundColor(SudoTheme.accent)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(SudoTheme.accent)
                     .disabled({
                         switch flasher.state {
                         case .readyForConfig, .readyForFirmware: return false
@@ -184,9 +185,7 @@ struct OnboardingView: View {
                         }
                     }())
             case .test:
-                Text("press any button")
-                    .font(SudoTheme.mono(size: 8))
-                    .foregroundColor(SudoTheme.textMuted)
+                EmptyView()
             }
         }
     }
