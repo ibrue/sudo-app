@@ -135,24 +135,35 @@ final class FirmwareFlasher: ObservableObject {
         setError("no device — plug in the macropad with BOOTSEL held (first time only)")
     }
 
-    /// Path 1: CIRCUITPY is mounted, just write code.py + config.json.
+    /// Path 1: CIRCUITPY is mounted, write boot.py + code.py + config.json.
+    ///
+    /// boot.py enables the usb_cdc.data channel — that's the wire the app
+    /// listens on for button presses. code.py reads config.json + sends
+    /// either serial events (passthrough/dynamic) or HID keystrokes
+    /// (keycombo/mediakey). After boot.py is in place, code.py self-resets
+    /// the device once so boot.py actually runs (auto-reload only re-runs
+    /// code.py — it doesn't re-execute boot.py).
     private func writeConfigToCircuitPy(path: String, settings: SudoSettings) {
-        beginFlashing(label: "writing code.py and config.json…", at: .write)
+        beginFlashing(label: "writing boot.py, code.py, config.json…", at: .write)
         do {
+            let bootDst = URL(fileURLWithPath: path).appendingPathComponent("boot.py")
             let codeDst = URL(fileURLWithPath: path).appendingPathComponent("code.py")
             let configDst = URL(fileURLWithPath: path).appendingPathComponent("config.json")
             let configData = try SudoConfigJSON.generate(from: settings)
 
-            updateProgress(0.1, phase: "writing code.py…")
+            updateProgress(0.1, phase: "writing boot.py (enables serial channel)…")
+            try Self.embeddedBootPy.write(to: bootDst, atomically: true, encoding: .utf8)
+            updateProgress(0.4, phase: "writing code.py…")
             try Self.embeddedCodePy.write(to: codeDst, atomically: true, encoding: .utf8)
-            updateProgress(0.6, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
+            updateProgress(0.7, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
             try writeOverwriting(data: configData, to: configDst)
 
             DispatchQueue.main.async { self.step = .verify }
-            updateProgress(0.9, phase: "waiting for CircuitPython auto-reload…")
-            // CircuitPython watches for filesystem changes and reloads after
-            // ~250 ms of stability. Give it a beat.
-            Thread.sleep(forTimeInterval: 0.6)
+            updateProgress(0.9, phase: "waiting for CircuitPython reset…")
+            // code.py's self-recovery triggers microcontroller.reset() on the
+            // first run after boot.py is new, which re-enumerates USB. Give
+            // the device a beat to come back.
+            Thread.sleep(forTimeInterval: 1.5)
 
             finishSuccess(label: "config live (\(settings.appMode.rawValue) mode)")
         } catch {
@@ -249,41 +260,63 @@ final class FirmwareFlasher: ObservableObject {
         return try result.get()
     }
 
-    // MARK: - Embedded code.py
+    // MARK: - Embedded firmware
     //
-    // The CircuitPython firmware is small enough (~150 lines) to embed
-    // verbatim in the app. That makes it impossible to ship a build that
-    // can't find it, regardless of whether build.sh found a sibling
-    // sudo-supply checkout or whether the bundle resource step ran.
-    //
-    // KEEP IN SYNC with sudo-supply/hardware/firmware/code.py.
+    // Both boot.py and code.py are embedded verbatim so the app can write
+    // them without bundle-lookup failure modes. KEEP IN SYNC with
+    // sudo-supply/hardware/firmware/{boot,code}.py.
+
+    /// boot.py enables the second usb_cdc serial channel (data) so the
+    /// app can receive `PRESS <n>` events on a dedicated wire. Console
+    /// stays on the first channel for debugging.
+    private static let embeddedBootPy: String = #"""
+# sudo macropad — boot.py
+#
+# Runs once at every cold boot, BEFORE code.py. Enables a second USB
+# serial channel (usb_cdc.data) so the host app can receive button
+# events on a dedicated wire instead of trying to intercept HID F-keys
+# system-wide.
+
+import usb_cdc
+
+usb_cdc.enable(console=True, data=True)
+"""#
 
     private static let embeddedCodePy: String = #"""
 # sudo macropad firmware — CircuitPython
 #
-# Lives at /code.py on the CIRCUITPY mass-storage volume. Reads /config.json
-# for per-button mappings; falls back to F13/F17/F18/F16 + ctrl+shift if
-# the file is missing or malformed.
-#
-# Hardware:
-#   GP0–GP3   buttons 1–4 (active-low, internal pull-up)
-#
-# LEDs are intentionally untouched right now: GP25 doubles as the Pico's
-# onboard LED that CircuitPython uses for status / error patterns, and we
-# saw a 3-flash crash pattern when claiming it. Buttons + HID first; LEDs
-# come back once the core is verified working.
-#
-# Why F13/F17/F18/F16 instead of F13–F16 in default mode:
-#   macOS treats raw F14 / F15 as display-brightness keys on Apple-style
-#   keyboards even when modifiers are present. F17/F18 (0x6C / 0x6D) are
-#   unclaimed by the system, so the keystrokes survive to HotkeyListener.
+# Communication channels:
+#   usb_cdc.data    — primary path. Pad writes "PRESS <1-4>\n" lines on
+#                     each button press. Host app reads + dispatches per
+#                     app. Configured by boot.py.
+#   usb_hid         — secondary. In keycombo / mediakey modes the pad
+#                     ALSO types real keystrokes so it works standalone
+#                     without the app running. In passthrough (dynamic)
+#                     mode we skip HID entirely.
 
 import board
 import digitalio
 import json
 import supervisor
 import time
+import usb_cdc
 import usb_hid
+
+
+# Self-recovery: if boot.py was just written but the device hasn't fully
+# reset (auto-reload only re-runs code.py), the data channel won't exist.
+# Trigger a hardware reset so boot.py runs.
+if usb_cdc.data is None:
+    try:
+        with open("/boot.py", "r") as _f:
+            _f.read(1)
+        import microcontroller
+        microcontroller.reset()
+    except OSError:
+        pass
+
+
+serial = usb_cdc.data
 
 
 # HID device discovery
@@ -296,7 +329,6 @@ for _device in usb_hid.devices:
         consumer_device = _device
 
 
-# Pin map (buttons only)
 BUTTON_PINS = (board.GP0, board.GP1, board.GP2, board.GP3)
 
 
@@ -310,12 +342,12 @@ def _make_input(pin):
 buttons = [_make_input(pin) for pin in BUTTON_PINS]
 
 
-# Config
+# Default = passthrough on every button. App handles dispatch.
 DEFAULT_BUTTONS = [
-    {"mode": "keycombo", "keycode": 0x68, "modifiers": 0x03, "name": "button 1"},  # F13
-    {"mode": "keycombo", "keycode": 0x6D, "modifiers": 0x03, "name": "button 2"},  # F18
-    {"mode": "keycombo", "keycode": 0x6C, "modifiers": 0x03, "name": "button 3"},  # F17
-    {"mode": "keycombo", "keycode": 0x6B, "modifiers": 0x03, "name": "button 4"},  # F16
+    {"mode": "passthrough", "keycode": 0, "modifiers": 0, "name": "button 1"},
+    {"mode": "passthrough", "keycode": 0, "modifiers": 0, "name": "button 2"},
+    {"mode": "passthrough", "keycode": 0, "modifiers": 0, "name": "button 3"},
+    {"mode": "passthrough", "keycode": 0, "modifiers": 0, "name": "button 4"},
 ]
 
 
@@ -334,7 +366,6 @@ def load_config():
 button_configs = load_config()
 
 
-# HID send helpers
 def _send_keyboard(modifier, keycode):
     if keyboard_device is None:
         return
@@ -371,6 +402,15 @@ def _send_consumer(usage):
         pass
 
 
+def _send_press(idx):
+    if serial is None:
+        return
+    try:
+        serial.write(("PRESS %d\n" % (idx + 1)).encode("utf-8"))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 _CONSUMER_CODES = {
     16: 0xCD,
     17: 0xB5,
@@ -382,15 +422,18 @@ _CONSUMER_CODES = {
 
 def dispatch(idx):
     cfg = button_configs[idx]
-    mode = cfg.get("mode", "keycombo")
-    keycode = cfg.get("keycode", 0)
+    mode = cfg.get("mode", "passthrough")
 
-    if mode == "keycombo" or mode == "passthrough":
+    if mode == "passthrough":
+        _send_press(idx)
+    elif mode == "keycombo":
+        keycode = cfg.get("keycode", 0)
         modifiers = cfg.get("modifiers", 0)
         _send_keyboard(modifiers, keycode)
         time.sleep(0.015)
         _release_keyboard()
     elif mode == "mediakey":
+        keycode = cfg.get("keycode", 0)
         usage = _CONSUMER_CODES.get(keycode, 0)
         if usage:
             _send_consumer(usage)
@@ -404,17 +447,15 @@ debounce_until = [0] * 4
 while True:
     try:
         now = supervisor.ticks_ms()
-
         for i in range(4):
             if supervisor.ticks_diff(now, debounce_until[i]) < 0:
                 continue
-            state = buttons[i].value  # True = released
+            state = buttons[i].value
             if state != last_state[i]:
                 last_state[i] = state
                 debounce_until[i] = now + DEBOUNCE_MS
                 if not state:
                     dispatch(i)
-
         time.sleep(0.005)
     except Exception:  # noqa: BLE001
         try:
