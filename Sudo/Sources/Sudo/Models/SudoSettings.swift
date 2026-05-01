@@ -261,7 +261,15 @@ final class SudoSettings: ObservableObject {
         self.telemetryEnabled = defaults.object(forKey: "telemetryEnabled") == nil ? true : defaults.bool(forKey: "telemetryEnabled")
         self.debounceDuration = defaults.object(forKey: "debounceDuration") == nil ? 0.02 : defaults.double(forKey: "debounceDuration")
         self.autoSwitchEnabled = defaults.object(forKey: "autoSwitchEnabled") == nil ? true : defaults.bool(forKey: "autoSwitchEnabled")
-        self.categoryPresets = (defaults.dictionary(forKey: "categoryPresets") as? [String: String]) ?? Self.defaultCategoryPresets()
+        // Load saved category → preset map. Then merge in any newly-shipped
+        // categories (e.g. .youtube added in v1.4.x) so existing users
+        // pick up the new mappings without losing their customisations.
+        let savedCategoryPresets = (defaults.dictionary(forKey: "categoryPresets") as? [String: String]) ?? [:]
+        var mergedCategoryPresets = savedCategoryPresets
+        for (cat, presetID) in Self.defaultCategoryPresets() where mergedCategoryPresets[cat] == nil {
+            mergedCategoryPresets[cat] = presetID
+        }
+        self.categoryPresets = mergedCategoryPresets
         self.appPresetOverrides = (defaults.dictionary(forKey: "appPresetOverrides") as? [String: String]) ?? [:]
 
         self.expandedSections = Set(defaults.stringArray(forKey: "expandedSections") ?? [])

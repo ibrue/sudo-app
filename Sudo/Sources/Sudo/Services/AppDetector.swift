@@ -82,9 +82,23 @@ final class AppDetector {
         }
 
         if SupportedApp.browserBundleIDs.contains(bundleID) {
-            let domain = detectAIDomainInBrowser(pid: pid)
-            let category: AppCategory = domain != nil ? .ai : .browser
-            return DetectedApp(bundleID: bundleID, name: appName, pid: pid, isBrowser: true, matchedDomain: domain, category: category)
+            // Look at the URL bar + window title once; check media domains
+            // first (more specific category) then AI domains (general
+            // chat). Falls through to the generic browser category.
+            let scan = scanBrowserText(pid: pid)
+            if let media = matchMediaDomain(in: scan) {
+                return DetectedApp(bundleID: bundleID, name: appName, pid: pid,
+                                   isBrowser: true, matchedDomain: media.domain,
+                                   category: media.category)
+            }
+            if let aiDomain = matchAIDomain(in: scan) {
+                return DetectedApp(bundleID: bundleID, name: appName, pid: pid,
+                                   isBrowser: true, matchedDomain: aiDomain,
+                                   category: .ai)
+            }
+            return DetectedApp(bundleID: bundleID, name: appName, pid: pid,
+                               isBrowser: true, matchedDomain: nil,
+                               category: .browser)
         }
 
         // Detect other app categories (media, CAD, writing, etc.)
@@ -96,12 +110,16 @@ final class AppDetector {
         return nil
     }
 
-    private func detectAIDomainInBrowser(pid: pid_t) -> String? {
+    /// Scan the focused browser window's title + URL bar once, return
+    /// the lowercased concatenation. Cheaper than running the AX walk
+    /// per domain check.
+    private func scanBrowserText(pid: pid_t) -> String {
         let appElement = AXUIElementCreateApplication(pid)
-
-        var titleValue: AnyObject?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &titleValue) == .success,
-              let windowVal = titleValue else { return nil }
+        var focusedWindowValue: AnyObject?
+        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindowValue) == .success,
+              let windowVal = focusedWindowValue,
+              CFGetTypeID(windowVal) == AXUIElementGetTypeID()
+        else { return "" }
         let focusedWindow = windowVal as! AXUIElement  // swiftlint:disable:this force_cast
 
         var windowTitleValue: AnyObject?
@@ -109,12 +127,28 @@ final class AppDetector {
         let windowTitle = (windowTitleValue as? String)?.lowercased() ?? ""
 
         let urlBarText = findURLField(in: appElement, depth: 0, maxDepth: 6)?.lowercased() ?? ""
-        let textToSearch = windowTitle + " " + urlBarText
+        return windowTitle + " " + urlBarText
+    }
 
-        for domain in SupportedApp.webDomains {
-            if textToSearch.contains(domain) { return domain }
+    private func matchMediaDomain(in text: String) -> (domain: String, category: AppCategory)? {
+        guard !text.isEmpty else { return nil }
+        for entry in SupportedApp.mediaWebDomains {
+            if text.contains(entry.domain) { return entry }
         }
         return nil
+    }
+
+    private func matchAIDomain(in text: String) -> String? {
+        guard !text.isEmpty else { return nil }
+        for domain in SupportedApp.webDomains {
+            if text.contains(domain) { return domain }
+        }
+        return nil
+    }
+
+    /// Kept for binary-compat — used by detectAllSupportedApps.
+    private func detectAIDomainInBrowser(pid: pid_t) -> String? {
+        matchAIDomain(in: scanBrowserText(pid: pid))
     }
 
     private func findURLField(in element: AXUIElement, depth: Int, maxDepth: Int) -> String? {

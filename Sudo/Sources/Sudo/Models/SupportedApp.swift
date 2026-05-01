@@ -53,6 +53,15 @@ enum SupportedApp: String, CaseIterable {
         "chat.openai.com",
     ]
 
+    /// Web domains that should switch to a media-style preset rather than
+    /// the generic browser/AI ones. Detected via the same URL-bar / window
+    /// title scan as `webDomains`. Maps the matched domain → AppCategory
+    /// so the engine can pick the right preset (e.g. youtube → .youtube).
+    static let mediaWebDomains: [(domain: String, category: AppCategory)] = [
+        ("youtube.com",      .youtube),
+        ("music.youtube.com", .youtube),
+    ]
+
     static let browserBundleIDs: Set<String> = [
         "com.apple.Safari",
         "com.google.Chrome",
@@ -164,6 +173,7 @@ enum AppCategory: String, CaseIterable, Codable {
     case terminal
     case browser
     case media
+    case youtube
     case cad
     case videoEditing
     case writing
@@ -177,6 +187,7 @@ enum AppCategory: String, CaseIterable, Codable {
         case .terminal:      return "terminal / ide"
         case .browser:       return "browser"
         case .media:         return "media"
+        case .youtube:       return "youtube"
         case .cad:           return "cad"
         case .videoEditing:  return "video editing"
         case .writing:       return "writing"
@@ -214,6 +225,7 @@ enum AppCategory: String, CaseIterable, Codable {
         case .terminal:      return "claude-code"
         case .browser:       return "browsing"
         case .media:         return "media"
+        case .youtube:       return "youtube"
         case .cad:           return "cad"
         case .videoEditing:  return "video-editing"
         case .writing:       return "writing"

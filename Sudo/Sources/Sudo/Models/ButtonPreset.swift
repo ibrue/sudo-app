@@ -62,6 +62,7 @@ struct ButtonPreset: Identifiable {
         claudeCode,
         shortcuts,
         mediaControls,
+        youtube,
         browsing,
         discord,
         cad,
@@ -160,6 +161,30 @@ struct ButtonPreset: Identifiable {
                            keyCombo: KeyCombo(keyCode: KeyCombo.z, modifiers: .maskCommand)),
             .action4: .init(displayName: "Screenshot", searchTerms: [], mode: .keyCombo,
                            keyCombo: KeyCombo(keyCode: KeyCombo.three, modifiers: [.maskCommand, .maskShift])),
+        ]
+    )
+
+    /// YouTube-on-web keyboard shortcuts. Auto-applied when the
+    /// frontmost browser tab is youtube.com (or music.youtube.com).
+    /// Layout (bottom → top, matching how the pad reads physically):
+    ///   1 (bottom)   space   play/pause
+    ///   2            j       seek -10s
+    ///   3            l       seek +10s
+    ///   4 (top)      f       toggle fullscreen
+    static let youtube = ButtonPreset(
+        id: "youtube",
+        name: "YouTube",
+        description: "play/pause · seek · fullscreen",
+        buttons: [
+            // mac virtual keycodes: space=49, j=38, l=37, f=3
+            .approve: .init(displayName: "Play / Pause", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 49, modifiers: [])),
+            .action3: .init(displayName: "Back 10s", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 38, modifiers: [])),
+            .reject:  .init(displayName: "Forward 10s", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 37, modifiers: [])),
+            .action4: .init(displayName: "Fullscreen", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 3, modifiers: [])),
         ]
     )
 
