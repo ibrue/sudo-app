@@ -128,25 +128,32 @@ struct ButtonPreset: Identifiable {
     )
 
     /// Claude Code / terminal AI agents render their permission prompts
-    /// as plain text — "1.Yes 2.No 3.Yes,allow all (Esc to abort)" — and
-    /// the user picks by pressing the matching digit. Send the digit
-    /// directly via keyCombo instead of running the AX search pipeline:
-    /// faster, no AppleScript / OCR fallbacks, no chance of clicking the
-    /// wrong thing in some other window.
+    /// either as text ("1.Yes 2.No 3.Yes,allow all (Esc to abort)") or
+    /// as real UI sheets (Cursor, Claude.app). Use AI search so the
+    /// pipeline picks adaptively:
+    ///   AX → AppleScript → OCR → keyboard fallback (digits, editors only)
+    /// — if any of those find a match it's used; otherwise the keyboard
+    /// fallback types 1/2/3/Esc directly. The failure toast surfaces
+    /// "no prompt visible" when nothing matches at all.
     static let claudeCode = ButtonPreset(
         id: "claude-code",
         name: "Claude Code (terminal)",
-        description: "1 / 2 / 3 / esc — direct keystrokes",
+        description: "click ui button if visible, else type 1 / 2 / 3 / esc",
         buttons: [
-            // mac virtual keycodes: 1=18, 2=19, 3=20, esc=53
-            .approve: .init(displayName: "Yes", searchTerms: [], mode: .keyCombo,
-                           keyCombo: KeyCombo(keyCode: 18, modifiers: [])),
-            .reject:  .init(displayName: "No", searchTerms: [], mode: .keyCombo,
-                           keyCombo: KeyCombo(keyCode: 19, modifiers: [])),
-            .action3: .init(displayName: "Yes, allow all", searchTerms: [], mode: .keyCombo,
-                           keyCombo: KeyCombo(keyCode: 20, modifiers: [])),
-            .action4: .init(displayName: "Escape / Cancel", searchTerms: [], mode: .keyCombo,
-                           keyCombo: KeyCombo(keyCode: 53, modifiers: [])),
+            .approve: .init(displayName: "Yes", searchTerms: [
+                "Yes", "Allow", "Approve", "Accept", "Confirm",
+                "yes", "allow", "y",
+            ]),
+            .reject: .init(displayName: "No", searchTerms: [
+                "No", "Deny", "Reject", "Cancel", "no", "n",
+            ]),
+            .action3: .init(displayName: "Yes, allow all", searchTerms: [
+                "Yes, allow all", "Allow all", "allow all edits",
+                "Yes, allow all edits this session",
+            ]),
+            .action4: .init(displayName: "Escape / Cancel", searchTerms: [
+                "Cancel", "Escape", "Stop", "Abort",
+            ]),
         ]
     )
 

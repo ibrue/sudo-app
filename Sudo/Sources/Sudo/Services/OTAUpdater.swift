@@ -18,7 +18,7 @@ final class OTAUpdater: ObservableObject {
     @Published var isUpdating: Bool = false
     @Published var updateProgress: Double = 0
 
-    static let currentVersion = "1.5.2-beta"
+    static let currentVersion = "1.5.3-beta"
 
     private let repoOwner = "ibrue"
     private let repoName = "sudo-app"

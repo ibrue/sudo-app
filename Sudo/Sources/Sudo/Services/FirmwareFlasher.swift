@@ -162,32 +162,32 @@ final class FirmwareFlasher: ObservableObject {
         setError("no device — plug in the macropad with BOOTSEL held (first time only)")
     }
 
-    /// Path 1: CIRCUITPY is mounted, write code.py + config.json.
+    /// Path 1: CIRCUITPY is mounted, write boot.py + code.py + config.json.
     ///
-    /// Pure-HID firmware: pad sends ctrl+shift+F-keys, the macOS app's
-    /// HotkeyListener catches them. No serial protocol, no boot.py.
+    /// boot.py is what makes the firmware hot-pluggable: it hides
+    /// CIRCUITPY in normal use (no more "eject before unplug" warning),
+    /// only re-exposes the drive when the user holds button 1 while
+    /// plugging in. Pure HID otherwise.
     private func writeConfigToCircuitPy(path: String, settings: SudoSettings) {
-        beginFlashing(label: "writing code.py and config.json…", at: .write)
+        beginFlashing(label: "writing boot.py, code.py, config.json…", at: .write)
         do {
             let bootDst = URL(fileURLWithPath: path).appendingPathComponent("boot.py")
             let codeDst = URL(fileURLWithPath: path).appendingPathComponent("code.py")
             let configDst = URL(fileURLWithPath: path).appendingPathComponent("config.json")
             let configData = try SudoConfigJSON.generate(from: settings)
 
-            // Old serial-protocol installs left a boot.py behind that enabled
-            // usb_cdc.data. Remove it so the device only exposes one tty.
-            try? FileManager.default.removeItem(at: bootDst)
-
-            updateProgress(0.2, phase: "writing code.py…")
+            updateProgress(0.15, phase: "writing boot.py (hot-plug guard)…")
+            try Self.embeddedBootPy.write(to: bootDst, atomically: true, encoding: .utf8)
+            updateProgress(0.45, phase: "writing code.py…")
             try Self.embeddedCodePy.write(to: codeDst, atomically: true, encoding: .utf8)
-            updateProgress(0.6, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
+            updateProgress(0.75, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
             try writeOverwriting(data: configData, to: configDst)
 
             DispatchQueue.main.async { self.step = .verify }
             updateProgress(0.9, phase: "waiting for CircuitPython auto-reload…")
             Thread.sleep(forTimeInterval: 0.6)
 
-            finishSuccess(label: "config live (\(settings.appMode.rawValue) mode)")
+            finishSuccess(label: "flashed — drive will be hidden on next plug-in (hold button 1 to re-flash)")
         } catch {
             setError("config write failed: \(error.localizedDescription)")
         }
@@ -284,7 +284,28 @@ final class FirmwareFlasher: ObservableObject {
 
     // MARK: - Embedded firmware
     //
-    // KEEP IN SYNC with sudo-supply/hardware/firmware/code.py.
+    // KEEP IN SYNC with sudo-supply/hardware/firmware/{boot,code}.py.
+
+    /// boot.py runs once at every cold boot, before code.py. It hides
+    /// the CIRCUITPY mass-storage drive (so macOS stops yelling about
+    /// "eject before unplug") *unless* button 1 (GP3) is held at the
+    /// moment of boot — that's our "flash mode" gesture.
+    private static let embeddedBootPy: String = #"""
+# sudo macropad — boot.py (hot-plug guard)
+
+import board
+import digitalio
+import storage
+
+_btn = digitalio.DigitalInOut(board.GP3)
+_btn.direction = digitalio.Direction.INPUT
+_btn.pull = digitalio.Pull.UP
+# Active-low: button held → False → flash mode (drive stays visible).
+_flash_mode = not _btn.value
+if not _flash_mode:
+    storage.disable_usb_drive()
+_btn.deinit()
+"""#
 
     private static let embeddedCodePy: String = #"""
 # sudo macropad firmware — CircuitPython
@@ -686,7 +707,11 @@ extension FirmwareFlasher {
         case .error(let msg):
             return .init(label: "device: error — \(msg)", colour: Color(nsColor: .systemRed))
         case .idle:
-            return .init(label: "device: not detected", colour: Color(nsColor: .separatorColor))
+            // After v1.5.3 the firmware hides the CIRCUITPY drive in normal
+            // use; "not detected" usually means "device is plugged in but
+            // running normally" rather than "no device at all."
+            return .init(label: "device: idle (hold button 1 + replug to flash)",
+                         colour: Color(nsColor: .separatorColor))
         }
     }
 }
