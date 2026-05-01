@@ -818,6 +818,17 @@ struct ConfigView: View {
                     .buttonStyle(.plain)
                     .font(SudoTheme.mono(size: 8))
                     .foregroundColor(SudoTheme.textMuted)
+                Button("copy") {
+                    let tf = Self.debugTimeFormatter
+                    let text = debugLogger.entries
+                        .map { "\(tf.string(from: $0.timestamp))  \($0.message)" }
+                        .joined(separator: "\n")
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                }
+                .buttonStyle(.plain)
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(SudoTheme.accent)
                 Spacer()
                 Text("\(debugLogger.entries.count) entries")
                     .font(SudoTheme.mono(size: 8))
