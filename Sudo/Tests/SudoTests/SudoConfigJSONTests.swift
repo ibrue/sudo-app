@@ -81,17 +81,13 @@ final class SudoConfigJSONTests: XCTestCase {
             "action4": "mediaKey",
         ]
 
-        for mode in [AppMode.simple, .custom] {
-            settings.appMode = mode
-            let data = try SudoConfigJSON.generate(from: settings)
-            let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-            let buttons = obj["buttons"] as! [[String: Any]]
-            // In non-dynamic modes, the per-button mode must reflect what
-            // the user / preset has configured.
-            let modes = buttons.compactMap { $0["mode"] as? String }
-            XCTAssertTrue(modes.contains("mediakey"),
-                          "\(mode.rawValue) mode should preserve mediaKey buttons")
-        }
+        settings.appMode = .simple
+        let data = try SudoConfigJSON.generate(from: settings)
+        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let buttons = obj["buttons"] as! [[String: Any]]
+        let modes = buttons.compactMap { $0["mode"] as? String }
+        XCTAssertTrue(modes.contains("mediakey"),
+                      "simple mode should preserve mediaKey buttons")
     }
 
     func testButtonsAreInPhysicalOrder() throws {
@@ -159,10 +155,9 @@ final class SudoConfigJSONTests: XCTestCase {
         // Persistence + JSON schema both depend on these strings.
         XCTAssertEqual(AppMode.dynamic.rawValue, "dynamic")
         XCTAssertEqual(AppMode.simple.rawValue, "simple")
-        XCTAssertEqual(AppMode.custom.rawValue, "custom")
     }
 
     func testAppModeAllCasesCount() {
-        XCTAssertEqual(AppMode.allCases.count, 3)
+        XCTAssertEqual(AppMode.allCases.count, 2)
     }
 }

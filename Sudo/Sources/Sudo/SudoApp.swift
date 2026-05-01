@@ -12,20 +12,38 @@ struct SudoApp: App {
 
     private let dotTimer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
 
-    /// Fixed 4-char content between brackets
+    /// Menu bar label. Stays compact (≤14 chars) so it doesn't crowd the
+    /// system tray. Shows a transient tag of what the pad just did, then
+    /// drops back to the brand mark.
+    ///
+    ///   processing  → [····]  (animated)
+    ///   success     → [✓ <name>]
+    ///   failure     → [✗ <name>]
+    ///   idle        → [sudo]
     private var menuBarLabel: String {
         switch engine.lastResult {
-        case .success:
-            return "[ ok ]"
-        case .failure:
-            return "[fail]"
         case .processing:
             let frame = dotFrame % 4
             let patterns = ["·___", "··__", "···_", "····"]
             return "[\(patterns[frame])]"
+        case .success:
+            return "[✓ \(shortName())]"
+        case .failure:
+            return "[✗ \(shortName())]"
         case .idle:
             return "[sudo]"
         }
+    }
+
+    /// First word of the most recent action, lowercased, capped to 8 chars.
+    /// Keeps the menu bar item readable without expanding aggressively.
+    private func shortName() -> String {
+        let log = engine.actionLog
+        let raw = log.first?.action ?? engine.lastAction
+        let word = raw.lowercased()
+            .components(separatedBy: .whitespaces)
+            .first ?? raw.lowercased()
+        return String(word.prefix(8))
     }
 
     var body: some Scene {
@@ -40,7 +58,7 @@ struct SudoApp: App {
                 }
         } label: {
             Text(menuBarLabel)
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .onReceive(dotTimer) { _ in
                     if engine.isProcessing {
                         dotFrame += 1

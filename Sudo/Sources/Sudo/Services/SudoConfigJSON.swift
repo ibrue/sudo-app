@@ -7,7 +7,7 @@ import CoreGraphics
 /// ```json
 /// {
 ///   "version": 1,
-///   "mode": "dynamic" | "simple" | "custom",
+///   "mode": "dynamic" | "simple",
 ///   "buttons": [
 ///     {"mode": "keycombo"|"mediakey"|"passthrough",
 ///      "keycode": <hid usage>, "modifiers": <hid mod mask>,
@@ -51,21 +51,12 @@ enum SudoConfigJSON {
     // MARK: - Internal
 
     static func buttonRecord(action: PadAction, settings: SudoSettings) -> [String: Any] {
-        // In dynamic mode the firmware is intentionally dumb: it always
-        // sends F13–F16 + ctrl+shift, regardless of what auto-switch has
-        // momentarily set the per-button modes to. The app's HotkeyListener
-        // catches those F-keys and dispatches per-app via the currently
-        // auto-switched preset.
+        // dynamic — firmware passthrough; app catches the F-keys + dispatches
+        // simple  — firmware sends user-defined per-button keystrokes natively
         //
-        // This is the architectural difference between the modes:
-        //   dynamic — firmware passthrough; app does per-app dispatch
-        //   simple  — firmware sends one fixed preset's keystrokes natively
-        //   custom  — firmware sends user-defined per-button keystrokes
-        //
-        // Without this override, clicking [ flash device ] while a media
-        // preset was momentarily auto-applied would write `mediaKey` into
-        // the device for ever, bypassing the app — i.e. buttons would no
-        // longer track what the menu bar shows.
+        // The override matters: without it, clicking flash while an
+        // auto-switched preset was momentarily active would bake that
+        // preset's keystrokes into the device.
         let effectiveMode: ActionMode
         if settings.appMode == .dynamic {
             effectiveMode = .aiSearch

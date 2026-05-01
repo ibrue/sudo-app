@@ -112,9 +112,16 @@ struct ConfigView: View {
             // "webhook", "telemetry" all live under settings).
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if matches("button remapping", alsoMatching: "buttons", "keys", "remap") {
+                    if matches("device", alsoMatching: "flash", "firmware", "circuitpython", "rp2040") {
                         section {
-                            SectionHeader("button remapping", isExpanded: sectionBinding("remap"))
+                            SectionHeader("device", isExpanded: sectionBinding("device"))
+                            if settings.expandedSections.contains("device") { deviceContent }
+                        }
+                    }
+
+                    if matches("button remapping", alsoMatching: "buttons", "keys", "remap", "edit preset") {
+                        section {
+                            SectionHeader("edit preset", isExpanded: sectionBinding("remap"))
                             if settings.expandedSections.contains("remap") { remapContent }
                         }
                     }
@@ -860,6 +867,83 @@ struct ConfigView: View {
             }.font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
             Button("clear") { rebuilder.clearLog() }
                 .font(SudoTheme.mono(size: 8)).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Device (firmware flash)
+
+    @ViewBuilder
+    private var deviceContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Device status line
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(flasher.deviceConnectionLabel.colour)
+                    .frame(width: 6, height: 6)
+                Text(flasher.deviceConnectionLabel.label)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer()
+            }
+
+            // Action button per state
+            HStack {
+                switch flasher.state {
+                case .idle:
+                    Button("detect device") { flasher.detectDevice() }
+                        .controlSize(.small)
+                        .buttonStyle(.bordered)
+                case .detectingDevice:
+                    ProgressView().controlSize(.small)
+                    Text("scanning…")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                case .readyForConfig:
+                    Button("flash device") { flasher.flashFirmwareAndConfig() }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                        .tint(SudoTheme.accent)
+                case .readyForFirmware:
+                    Button("install + flash") { flasher.flashFirmwareAndConfig() }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                        .tint(SudoTheme.accent)
+                case .flashing:
+                    ProgressView(value: flasher.progress)
+                        .progressViewStyle(.linear)
+                        .tint(SudoTheme.accent)
+                    Text("\(Int(flasher.progress * 100))%")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                case .success:
+                    Text("flashed ✓")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(SudoTheme.accent)
+                    Spacer()
+                    Button("ok") { flasher.reset() }
+                        .controlSize(.small)
+                        .buttonStyle(.bordered)
+                case .error(let msg):
+                    Text(msg)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(nsColor: .systemRed))
+                        .lineLimit(2)
+                    Button("retry") { flasher.reset(); flasher.detectDevice() }
+                        .controlSize(.small)
+                        .buttonStyle(.bordered)
+                }
+            }
+
+            if !flasher.phase.isEmpty {
+                Text(flasher.phase)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
