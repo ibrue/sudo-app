@@ -133,6 +133,82 @@ final class SudoConfigUF2Tests: XCTestCase {
         XCTAssertEqual(AppMode.allCases.count, 3)
     }
 
+    // MARK: - Combine with firmware
+
+    /// Build a synthetic firmware UF2 of N valid blocks for testing combine().
+    private func fakeFirmwareUF2(blocks: Int) -> Data {
+        var data = Data()
+        for i in 0..<blocks {
+            let payload = Data(repeating: UInt8(i & 0xFF), count: 256)
+            let block = SudoConfigUF2.wrapUF2Block(
+                payload: payload,
+                targetAddress: UInt32(0x1000_0000 + i * 256),
+                blockNumber: UInt32(i),
+                totalBlocks: UInt32(blocks)
+            )
+            data.append(block)
+        }
+        return data
+    }
+
+    func testCombineAppendsOneBlock() throws {
+        let firmware = fakeFirmwareUF2(blocks: 4)
+        let combined = try SudoConfigUF2.combineWithFirmware(firmwareData: firmware,
+                                                              settings: SudoSettings.shared)
+        XCTAssertEqual(combined.count, firmware.count + 512)
+    }
+
+    func testCombineRewritesTotalBlocksInEveryBlock() throws {
+        let firmware = fakeFirmwareUF2(blocks: 4)
+        let combined = try SudoConfigUF2.combineWithFirmware(firmwareData: firmware,
+                                                              settings: SudoSettings.shared)
+        // 4 firmware + 1 config = 5 total
+        for i in 0..<5 {
+            let total = readU32LE(combined, offset: i * 512 + 24)
+            XCTAssertEqual(total, 5, "block \(i) total_blocks should be 5")
+        }
+    }
+
+    func testCombineConfigBlockTargetsConfigAddress() throws {
+        let firmware = fakeFirmwareUF2(blocks: 2)
+        let combined = try SudoConfigUF2.combineWithFirmware(firmwareData: firmware,
+                                                              settings: SudoSettings.shared)
+        let configBlockOffset = 2 * 512
+        XCTAssertEqual(readU32LE(combined, offset: configBlockOffset + 12),
+                       SudoConfigUF2.configFlashAddress)
+        XCTAssertEqual(readU32LE(combined, offset: configBlockOffset + 20), 2)  // block_number
+        XCTAssertEqual(readU32LE(combined, offset: configBlockOffset + 32),
+                       SudoConfigUF2.configMagic)  // first 4 bytes of payload
+    }
+
+    func testCombineRejectsBadSize() {
+        // Not a multiple of 512.
+        let bad = Data(repeating: 0, count: 511)
+        XCTAssertThrowsError(try SudoConfigUF2.combineWithFirmware(firmwareData: bad,
+                                                                    settings: SudoSettings.shared))
+    }
+
+    func testCombineRejectsBadMagic() {
+        var bad = Data(repeating: 0, count: 512)
+        bad[508] = 0; bad[509] = 0; bad[510] = 0; bad[511] = 0  // wrong end magic
+        XCTAssertThrowsError(try SudoConfigUF2.combineWithFirmware(firmwareData: bad,
+                                                                    settings: SudoSettings.shared))
+    }
+
+    func testCombineRejectsWrongFamily() {
+        // Build a single block with wrong family ID (Adafruit nRF52 = 0x1b57745f).
+        let payload = Data(repeating: 0xAA, count: 256)
+        var block = SudoConfigUF2.wrapUF2Block(payload: payload, targetAddress: 0)
+        // Overwrite family ID at offset 28
+        let wrongFamily: UInt32 = 0x1b57_745f
+        block[28] = UInt8(truncatingIfNeeded: wrongFamily)
+        block[29] = UInt8(truncatingIfNeeded: wrongFamily >> 8)
+        block[30] = UInt8(truncatingIfNeeded: wrongFamily >> 16)
+        block[31] = UInt8(truncatingIfNeeded: wrongFamily >> 24)
+        XCTAssertThrowsError(try SudoConfigUF2.combineWithFirmware(firmwareData: block,
+                                                                    settings: SudoSettings.shared))
+    }
+
     // MARK: - helpers
 
     private func readU32LE(_ data: Data, offset: Int) -> UInt32 {

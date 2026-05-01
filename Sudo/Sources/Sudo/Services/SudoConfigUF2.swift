@@ -55,6 +55,88 @@ enum SudoConfigUF2 {
         return url
     }
 
+    // MARK: - Combined firmware + config
+
+    /// Build a single UF2 file containing the base firmware followed by the
+    /// user's current config block. Use this when flashing a blank RP2040 —
+    /// a config-only UF2 leaves the chip with no executable code at
+    /// 0x10000000 and the device boots into BOOTSEL forever.
+    ///
+    /// The base firmware UF2 is parsed block-by-block. Every block's
+    /// `total_blocks` field is rewritten to (firmwareBlocks + 1) so the
+    /// bootloader's progress accounting stays consistent.
+    static func combineWithFirmware(firmwareData: Data, settings: SudoSettings) throws -> Data {
+        guard firmwareData.count > 0, firmwareData.count % 512 == 0 else {
+            throw FlashError.invalidFirmware("firmware UF2 must be a non-empty multiple of 512 bytes (got \(firmwareData.count))")
+        }
+        let firmwareBlocks = firmwareData.count / 512
+
+        // Validate every block: magic + RP2040 family.
+        for i in 0..<firmwareBlocks {
+            let off = i * 512
+            let m0 = readU32LE(firmwareData, offset: off)
+            let m1 = readU32LE(firmwareData, offset: off + 4)
+            let mEnd = readU32LE(firmwareData, offset: off + 508)
+            let family = readU32LE(firmwareData, offset: off + 28)
+            guard m0 == uf2MagicStart0, m1 == uf2MagicStart1, mEnd == uf2MagicEnd else {
+                throw FlashError.invalidFirmware("block \(i): UF2 magic mismatch")
+            }
+            guard family == rp2040FamilyID else {
+                throw FlashError.invalidFirmware("block \(i): not an RP2040 UF2 (family 0x\(String(family, radix: 16)))")
+            }
+        }
+
+        let totalBlocks = UInt32(firmwareBlocks + 1)
+
+        // Rewrite total_blocks (offset 24) in every firmware block. This is
+        // informational for the bootloader but lying about it can confuse
+        // some host-side tools.
+        var combined = Data(firmwareData)
+        for i in 0..<firmwareBlocks {
+            let off = i * 512 + 24
+            combined[off]     = UInt8(truncatingIfNeeded: totalBlocks)
+            combined[off + 1] = UInt8(truncatingIfNeeded: totalBlocks >> 8)
+            combined[off + 2] = UInt8(truncatingIfNeeded: totalBlocks >> 16)
+            combined[off + 3] = UInt8(truncatingIfNeeded: totalBlocks >> 24)
+        }
+
+        // Append the config block as block #firmwareBlocks of totalBlocks.
+        let configPayload = buildConfigPayload(settings: settings)
+        let configBlock = wrapUF2Block(payload: configPayload,
+                                       targetAddress: configFlashAddress,
+                                       blockNumber: UInt32(firmwareBlocks),
+                                       totalBlocks: totalBlocks)
+        combined.append(configBlock)
+        return combined
+    }
+
+    /// Locate the bundled base firmware UF2.
+    /// Search order: app bundle resources → ~/Library/Application Support/Sudo/Firmware/sudo-firmware.uf2
+    static func locateBaseFirmware() -> URL? {
+        if let bundleURL = Bundle.main.url(forResource: "sudo-firmware", withExtension: "uf2") {
+            return bundleURL
+        }
+        let supportDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Sudo/Firmware")
+        let candidate = supportDir.appendingPathComponent("sudo-firmware.uf2")
+        if FileManager.default.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+        return nil
+    }
+
+    enum FlashError: Error, LocalizedError {
+        case invalidFirmware(String)
+        case firmwareMissing
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidFirmware(let msg): return "invalid firmware: \(msg)"
+            case .firmwareMissing: return "sudo-firmware.uf2 not bundled — drop it into ~/Library/Application Support/Sudo/Firmware/"
+            }
+        }
+    }
+
     // MARK: - Config payload
 
     static func buildConfigPayload(settings: SudoSettings) -> Data {
@@ -255,5 +337,13 @@ enum SudoConfigUF2 {
         data.append(UInt8(truncatingIfNeeded: value >> 8))
         data.append(UInt8(truncatingIfNeeded: value >> 16))
         data.append(UInt8(truncatingIfNeeded: value >> 24))
+    }
+
+    static func readU32LE(_ data: Data, offset: Int) -> UInt32 {
+        let i = data.startIndex + offset
+        return UInt32(data[i])
+            | (UInt32(data[i + 1]) << 8)
+            | (UInt32(data[i + 2]) << 16)
+            | (UInt32(data[i + 3]) << 24)
     }
 }

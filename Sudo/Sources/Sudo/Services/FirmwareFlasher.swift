@@ -1,12 +1,22 @@
 import Foundation
 
-/// Detects RP2040 in bootloader mode and flashes firmware for simple mode presets.
+/// Detects RP2040 in bootloader mode and writes UF2s to it.
 ///
-/// When the RP2040 is in BOOTSEL mode, it appears as a USB mass storage device
-/// named "RPI-RP2". We copy a UF2 firmware file to it and the device auto-reboots.
+/// Two flavors:
 ///
-/// Simple mode means all 4 buttons are keyCombo or mediaKey — no AI search needed.
-/// The pad can work natively on any computer without the companion app.
+/// - `flashFirmwareAndConfig()` — the always-works button. Reads the bundled
+///   base firmware UF2, splices the user's current button config in as a
+///   final block, writes the combined UF2 to RPI-RP2. Works on a blank chip
+///   because the firmware lives at 0x10000000; the config sector is just an
+///   extra block at 0x101FF000.
+///
+/// - `flashCurrentConfig()` — config-only. Faster, but only valid when the
+///   base firmware is already on the chip. Mostly useful in dev.
+///
+/// Both use a copy-and-watch strategy instead of `FileManager.copyItem`: the
+/// RP2040 bootloader unmounts mid-sync after it processes a UF2, which makes
+/// `copyItem` block forever. We spawn `cp`, then poll for the volume to
+/// disappear; vanish == success.
 final class FirmwareFlasher: ObservableObject {
     static let shared = FirmwareFlasher()
 
@@ -14,201 +24,297 @@ final class FirmwareFlasher: ObservableObject {
         case idle
         case detectingDevice
         case deviceFound(path: String)
-        case flashing(progress: String)
+        case flashing
         case success
         case error(message: String)
     }
 
     @Published var state: FlashState = .idle
     @Published var bootloaderDetected: Bool = false
+    /// Human-readable description of the current step. e.g.
+    /// "preparing firmware (12 KB)", "writing… 47%", "waiting for reboot".
+    @Published var phase: String = ""
+    /// 0.0 – 1.0. Progress through the current flash operation.
+    @Published var progress: Double = 0
 
-    /// Known firmware profiles — each maps a preset to the key combos the firmware should send.
+    /// Maximum seconds we wait for the bootloader volume to unmount after we
+    /// finish writing. The bootloader normally unmounts within ~2 s.
+    private let unmountTimeoutSeconds: Double = 30
+    /// How often we poll the volume during write/wait.
+    private let pollIntervalSeconds: Double = 0.25
+
+    /// Known firmware profiles — kept for the legacy preset flash flow.
     struct FirmwareProfile: Identifiable {
         let id: String
         let name: String
         let description: String
-        let buttons: [String]  // human-readable key descriptions for each button 1-4
+        let buttons: [String]
     }
 
-    /// Pre-defined firmware profiles for common presets
     static let profiles: [FirmwareProfile] = [
-        FirmwareProfile(
-            id: "default",
-            name: "default (AI agent)",
-            description: "ctrl+shift+F13-F16 — requires companion app",
-            buttons: ["ctrl+shift+F13", "ctrl+shift+F15", "ctrl+shift+F14", "ctrl+shift+F16"]
-        ),
-        FirmwareProfile(
-            id: "shortcuts",
-            name: "system shortcuts",
-            description: "copy / paste / undo / screenshot — works without app",
-            buttons: ["cmd+C", "cmd+V", "cmd+Z", "cmd+shift+3"]
-        ),
-        FirmwareProfile(
-            id: "media",
-            name: "media controls",
-            description: "play / next / prev / like — works without app",
-            buttons: ["play/pause", "next track", "prev track", "media key"]
-        ),
-        FirmwareProfile(
-            id: "browsing",
-            name: "web browsing",
-            description: "back / forward / refresh / close tab — works without app",
-            buttons: ["cmd+[", "cmd+]", "cmd+R", "cmd+W"]
-        ),
-        FirmwareProfile(
-            id: "discord",
-            name: "discord soundboard",
-            description: "sound clips 1-4 — works without app",
-            buttons: ["ctrl+shift+1", "ctrl+shift+2", "ctrl+shift+3", "cmd+shift+D"]
-        ),
-        FirmwareProfile(
-            id: "custom",
-            name: "current config",
-            description: "flash your current button config — works without app",
-            buttons: ["button 1", "button 2", "button 3", "button 4"]
-        ),
+        FirmwareProfile(id: "default",   name: "default (AI agent)",
+                        description: "ctrl+shift+F13-F16 — requires companion app",
+                        buttons: ["ctrl+shift+F13", "ctrl+shift+F15", "ctrl+shift+F14", "ctrl+shift+F16"]),
+        FirmwareProfile(id: "shortcuts", name: "system shortcuts",
+                        description: "copy / paste / undo / screenshot — works without app",
+                        buttons: ["cmd+C", "cmd+V", "cmd+Z", "cmd+shift+3"]),
+        FirmwareProfile(id: "media",     name: "media controls",
+                        description: "play / next / prev / like — works without app",
+                        buttons: ["play/pause", "next track", "prev track", "media key"]),
+        FirmwareProfile(id: "browsing",  name: "web browsing",
+                        description: "back / forward / refresh / close tab — works without app",
+                        buttons: ["cmd+[", "cmd+]", "cmd+R", "cmd+W"]),
+        FirmwareProfile(id: "discord",   name: "discord soundboard",
+                        description: "sound clips 1-4 — works without app",
+                        buttons: ["ctrl+shift+1", "ctrl+shift+2", "ctrl+shift+3", "cmd+shift+D"]),
+        FirmwareProfile(id: "custom",    name: "current config",
+                        description: "flash your current button config — works without app",
+                        buttons: ["button 1", "button 2", "button 3", "button 4"]),
     ]
 
-    /// Check if RP2040 is in bootloader mode (RPI-RP2 volume mounted)
-    func detectBootloader() {
-        state = .detectingDevice
+    // MARK: - Detection
 
+    /// Check if RP2040 is in bootloader mode (RPI-RP2 volume mounted).
+    func detectBootloader() {
+        DispatchQueue.main.async {
+            self.state = .detectingDevice
+            self.phase = "scanning for RPI-RP2…"
+            self.progress = 0
+        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let bootloaderPath = self?.findBootloaderVolume()
             DispatchQueue.main.async {
                 if let path = bootloaderPath {
                     self?.state = .deviceFound(path: path)
                     self?.bootloaderDetected = true
+                    self?.phase = "ready to flash"
                 } else {
                     self?.state = .idle
                     self?.bootloaderDetected = false
+                    self?.phase = "no device in BOOTSEL — hold the BOOTSEL button while plugging in"
                 }
             }
         }
     }
 
-    /// Flash a firmware profile to the connected RP2040
-    func flash(profile: FirmwareProfile) {
+    // MARK: - Public flash entry points
+
+    /// Always-works flash: writes base firmware + current config in one go.
+    /// Works on a blank RP2040.
+    func flashFirmwareAndConfig(settings: SudoSettings = .shared) {
         guard case .deviceFound(let path) = state else {
-            state = .error(message: "no device in bootloader mode")
+            setError("no device in bootloader mode — click `detect bootsel` first")
             return
         }
-
-        state = .flashing(progress: "preparing firmware...")
-
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            // Check if we have a pre-built UF2 for this profile
-            let uf2URL = self?.findUF2(for: profile.id)
-
-            if let uf2URL = uf2URL {
-                DispatchQueue.main.async {
-                    self?.state = .flashing(progress: "copying firmware to device...")
-                }
-
-                let destURL = URL(fileURLWithPath: path).appendingPathComponent(uf2URL.lastPathComponent)
-                do {
-                    try FileManager.default.copyItem(at: uf2URL, to: destURL)
-                    // RP2040 auto-reboots after receiving UF2
-                    Thread.sleep(forTimeInterval: 2.0)
-                    DispatchQueue.main.async {
-                        self?.state = .success
-                        self?.bootloaderDetected = false
-                        print("[sudo] Firmware flashed successfully: \(profile.name)")
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        self?.state = .error(message: "copy failed: \(error.localizedDescription)")
-                    }
-                }
-            } else {
-                // No pre-built UF2 — direct user to download
-                DispatchQueue.main.async {
-                    self?.state = .error(message: "firmware not found — download from sudo.supply/download")
-                }
-            }
+            self?.runFlashFirmwareAndConfig(devicePath: path, settings: settings)
         }
     }
 
-    /// Flash the user's current per-button config to the device as a generated UF2.
-    ///
-    /// Builds a config-only UF2 from `SudoSettings` and copies it to the RPI-RP2
-    /// volume. The firmware reads this region on boot and applies the mappings.
-    /// The device must already have the sudo base firmware installed.
+    /// Config-only flash. Requires the base firmware to already be on the chip.
     func flashCurrentConfig(settings: SudoSettings = .shared) {
         guard case .deviceFound(let path) = state else {
-            state = .error(message: "no device in bootloader mode")
+            setError("no device in bootloader mode")
             return
         }
-
-        state = .flashing(progress: "generating config UF2...")
-
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.runFlashCurrentConfig(devicePath: path, settings: settings)
+        }
+    }
+
+    /// Legacy: flash a pre-built profile UF2 by id.
+    func flash(profile: FirmwareProfile) {
+        guard case .deviceFound(let path) = state else {
+            setError("no device in bootloader mode")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            guard let uf2URL = self.findUF2(for: profile.id) else {
+                self.setError("preset firmware not bundled — download from sudo.supply/download")
+                return
+            }
+            self.beginFlashing(label: "preparing \(profile.name)…")
             do {
-                let url = try SudoConfigUF2.writeTemp(from: settings)
-
-                DispatchQueue.main.async {
-                    self?.state = .flashing(progress: "copying config to device...")
-                }
-
-                let destURL = URL(fileURLWithPath: path).appendingPathComponent("sudo-config.uf2")
-                try FileManager.default.copyItem(at: url, to: destURL)
-                Thread.sleep(forTimeInterval: 2.0)
-                try? FileManager.default.removeItem(at: url)
-
-                DispatchQueue.main.async {
-                    self?.state = .success
-                    self?.bootloaderDetected = false
-                    print("[sudo] flashed current config (\(settings.appMode.rawValue))")
-                }
+                let dst = URL(fileURLWithPath: path).appendingPathComponent(uf2URL.lastPathComponent)
+                try self.copyToBootloader(src: uf2URL, dst: dst, label: "writing \(profile.name)")
+                self.finishSuccess(label: "flashed \(profile.name) — device rebooting")
             } catch {
-                DispatchQueue.main.async {
-                    self?.state = .error(message: "config flash failed: \(error.localizedDescription)")
-                }
+                self.setError("flash failed: \(error.localizedDescription)")
             }
         }
     }
 
-    /// Reset state
     func reset() {
-        state = .idle
-        bootloaderDetected = false
+        DispatchQueue.main.async {
+            self.state = .idle
+            self.bootloaderDetected = false
+            self.phase = ""
+            self.progress = 0
+        }
     }
 
-    // MARK: - Private
+    // MARK: - Implementations
+
+    private func runFlashFirmwareAndConfig(devicePath: String, settings: SudoSettings) {
+        beginFlashing(label: "preparing firmware…")
+        do {
+            guard let baseURL = SudoConfigUF2.locateBaseFirmware() else {
+                throw SudoConfigUF2.FlashError.firmwareMissing
+            }
+            let firmwareData = try Data(contentsOf: baseURL)
+            updatePhase("building combined UF2 (\(firmwareData.count / 512) firmware blocks + 1 config)")
+            let combined = try SudoConfigUF2.combineWithFirmware(firmwareData: firmwareData, settings: settings)
+
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("sudo-firmware-\(Int(Date().timeIntervalSince1970)).uf2")
+            try combined.write(to: tempURL)
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+
+            let dst = URL(fileURLWithPath: devicePath).appendingPathComponent("sudo-firmware.uf2")
+            try copyToBootloader(src: tempURL, dst: dst, label: "writing firmware + config")
+            finishSuccess(label: "flashed firmware + config (\(settings.appMode.rawValue) mode)")
+        } catch {
+            setError("flash failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func runFlashCurrentConfig(devicePath: String, settings: SudoSettings) {
+        beginFlashing(label: "generating config UF2…")
+        do {
+            let tempURL = try SudoConfigUF2.writeTemp(from: settings)
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+            let dst = URL(fileURLWithPath: devicePath).appendingPathComponent("sudo-config.uf2")
+            try copyToBootloader(src: tempURL, dst: dst, label: "writing config")
+            finishSuccess(label: "flashed config (\(settings.appMode.rawValue) mode)")
+        } catch {
+            setError("config flash failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Copy helper (avoids copyItem hang)
+
+    /// Spawn `cp`, then poll for the bootloader volume to unmount. The
+    /// bootloader unmounts after it finishes processing the UF2 — we treat
+    /// that as our completion signal. The `cp` process is a hedge: if it
+    /// returns first we honour that, but it usually hangs on close() until
+    /// the volume reappears or we kill it.
+    func copyToBootloader(src: URL, dst: URL, label: String) throws {
+        updatePhase("\(label) — \(formatBytes(fileSize(at: src)))")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/cp")
+        process.arguments = [src.path, dst.path]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+
+        let start = Date()
+        var lastSeenMounted = true
+        while true {
+            let mounted = findBootloaderVolume() != nil
+            let elapsed = Date().timeIntervalSince(start)
+
+            // While volume is mounted, we model progress as the elapsed
+            // fraction of the typical write window (~3 s). Capped at 95%
+            // until we actually see the unmount.
+            let modelled = min(elapsed / 3.0, 0.95)
+            updateProgress(modelled, phase: "\(label)… \(Int(modelled * 100))%")
+
+            if !mounted && lastSeenMounted {
+                // Bootloader unmounted = success. Give the kernel a beat to
+                // tear down before we report.
+                Thread.sleep(forTimeInterval: 0.4)
+                process.terminate()
+                updateProgress(1.0, phase: "device rebooted")
+                return
+            }
+            lastSeenMounted = mounted
+
+            if elapsed > unmountTimeoutSeconds {
+                process.terminate()
+                throw NSError(domain: "FirmwareFlasher", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "device didn't unmount after \(Int(unmountTimeoutSeconds)) s — try unplugging and re-entering BOOTSEL"
+                ])
+            }
+            Thread.sleep(forTimeInterval: pollIntervalSeconds)
+        }
+    }
+
+    // MARK: - State helpers
+
+    private func beginFlashing(label: String) {
+        DispatchQueue.main.async {
+            self.state = .flashing
+            self.phase = label
+            self.progress = 0
+        }
+    }
+
+    private func updatePhase(_ label: String) {
+        DispatchQueue.main.async { self.phase = label }
+    }
+
+    private func updateProgress(_ value: Double, phase: String) {
+        DispatchQueue.main.async {
+            self.progress = value
+            self.phase = phase
+        }
+    }
+
+    private func finishSuccess(label: String) {
+        DispatchQueue.main.async {
+            self.state = .success
+            self.bootloaderDetected = false
+            self.phase = label
+            self.progress = 1.0
+            print("[sudo] \(label)")
+        }
+    }
+
+    private func setError(_ message: String) {
+        DispatchQueue.main.async {
+            self.state = .error(message: message)
+            self.phase = message
+            self.progress = 0
+            print("[sudo] flash error: \(message)")
+        }
+    }
+
+    // MARK: - Volume + filesystem helpers
 
     private func findBootloaderVolume() -> String? {
         let volumesPath = "/Volumes"
         guard let contents = try? FileManager.default.contentsOfDirectory(atPath: volumesPath) else { return nil }
-
-        for volume in contents {
-            // RP2040 bootloader mounts as "RPI-RP2"
-            if volume == "RPI-RP2" {
-                let path = "\(volumesPath)/\(volume)"
-                // Verify it's a real RP2040 bootloader volume
-                let infoPath = "\(path)/INFO_UF2.TXT"
-                if FileManager.default.fileExists(atPath: infoPath) {
-                    return path
-                }
+        for volume in contents where volume == "RPI-RP2" {
+            let path = "\(volumesPath)/\(volume)"
+            let infoPath = "\(path)/INFO_UF2.TXT"
+            if FileManager.default.fileExists(atPath: infoPath) {
+                return path
             }
         }
         return nil
     }
 
     private func findUF2(for profileID: String) -> URL? {
-        // Check app bundle resources first
         if let bundlePath = Bundle.main.url(forResource: "sudo-\(profileID)", withExtension: "uf2") {
             return bundlePath
         }
-
-        // Check ~/Library/Application Support/Sudo/Firmware/
         let supportDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Sudo/Firmware")
         let uf2Path = supportDir.appendingPathComponent("sudo-\(profileID).uf2")
         if FileManager.default.fileExists(atPath: uf2Path.path) {
             return uf2Path
         }
-
         return nil
+    }
+
+    private func fileSize(at url: URL) -> Int {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+    }
+
+    private func formatBytes(_ bytes: Int) -> String {
+        if bytes >= 1024 * 1024 { return String(format: "%.1f MB", Double(bytes) / 1_048_576) }
+        if bytes >= 1024 { return String(format: "%.0f KB", Double(bytes) / 1024) }
+        return "\(bytes) B"
     }
 }

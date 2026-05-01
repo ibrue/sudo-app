@@ -276,63 +276,88 @@ struct MainView: View {
 
     @ViewBuilder
     private var flashRow: some View {
-        HStack(spacing: 6) {
-            switch flasher.state {
-            case .idle:
-                Text("device:")
-                    .font(SudoTheme.mono(size: 9))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                switch flasher.state {
+                case .idle:
+                    Text("device:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text("ready")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.text)
+                    Spacer()
+                    Button("detect bootsel") { flasher.detectBootloader() }
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                        .buttonStyle(.plain)
+                case .detectingDevice:
+                    Text("scanning for RPI-RP2…")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                    Spacer()
+                case .deviceFound:
+                    Text("bootsel:")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                    Text("found")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                    Spacer()
+                    Button("[ flash device ]") { flasher.flashFirmwareAndConfig() }
+                        .font(SudoTheme.mono(size: 9, weight: .bold))
+                        .foregroundColor(SudoTheme.accent)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("flash firmware and current config to device")
+                case .flashing:
+                    Text("flashing")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                    Text("\(Int(flasher.progress * 100))%")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.text)
+                        .frame(width: 32, alignment: .leading)
+                    Spacer()
+                    Button("cancel") { flasher.reset() }
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                        .buttonStyle(.plain)
+                case .success:
+                    Text("flashed ✓")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                    Spacer()
+                    Button("ok") { flasher.reset() }
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.textMuted)
+                        .buttonStyle(.plain)
+                case .error:
+                    Text("flash failed")
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.error)
+                    Spacer()
+                    Button("retry") { flasher.reset(); flasher.detectBootloader() }
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(SudoTheme.accent)
+                        .buttonStyle(.plain)
+                }
+            }
+
+            // Progress bar — visible during a flash, hidden otherwise.
+            if case .flashing = flasher.state {
+                ProgressView(value: flasher.progress)
+                    .progressViewStyle(.linear)
+                    .tint(SudoTheme.accent)
+            }
+
+            // Phase label — always shown when non-empty so the user can see
+            // exactly what step we're on (preparing, writing, waiting, etc.)
+            if !flasher.phase.isEmpty {
+                Text(flasher.phase)
+                    .font(SudoTheme.mono(size: 8))
                     .foregroundColor(SudoTheme.textMuted)
-                Text("ready")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.text)
-                Spacer()
-                Button("detect bootsel") { flasher.detectBootloader() }
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.accent)
-                    .buttonStyle(.plain)
-            case .detectingDevice:
-                Text("scanning for RPI-RP2...")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.accent)
-                Spacer()
-            case .deviceFound:
-                Text("bootsel:")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.textMuted)
-                Text("found")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.accent)
-                Spacer()
-                Button("[ flash config ]") { flasher.flashCurrentConfig() }
-                    .font(SudoTheme.mono(size: 9, weight: .bold))
-                    .foregroundColor(SudoTheme.accent)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("flash current config to device")
-            case .flashing(let progress):
-                Text(progress)
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.accent)
-                    .lineLimit(1)
-                Spacer()
-            case .success:
-                Text("flashed ✓ — device rebooting")
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.accent)
-                Spacer()
-                Button("ok") { flasher.reset() }
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.textMuted)
-                    .buttonStyle(.plain)
-            case .error(let message):
-                Text(message)
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.error)
                     .lineLimit(2)
-                Spacer()
-                Button("retry") { flasher.reset(); flasher.detectBootloader() }
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.accent)
-                    .buttonStyle(.plain)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
