@@ -397,7 +397,7 @@ def load_config():
 config = load_config()
 
 
-def send_key(modifiers, keycode):
+def send_key_down(modifiers, keycode):
     if keyboard is None:
         return
     try:
@@ -405,10 +405,23 @@ def send_key(modifiers, keycode):
         rpt[0] = modifiers & 0xFF
         rpt[2] = keycode & 0xFF
         keyboard.send_report(rpt)
-        time.sleep(0.015)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def send_key_up():
+    if keyboard is None:
+        return
+    try:
         keyboard.send_report(bytearray(8))
     except Exception:  # noqa: BLE001
         pass
+
+
+def send_key(modifiers, keycode):
+    send_key_down(modifiers, keycode)
+    time.sleep(0.015)
+    send_key_up()
 
 
 def send_consumer(usage):
@@ -427,15 +440,27 @@ def send_consumer(usage):
 
 _CONSUMER = {16: 0xCD, 17: 0xB5, 18: 0xB6, 19: 0xB7, 20: 0xE2}
 
+# Per-button "currently held" tracker so we can release the key the
+# moment the user lets go (enables YouTube's hold-spacebar-for-2x).
+key_held = [False] * 4
 
-def dispatch(i):
+
+def dispatch_press(i):
     b = config[i]
-    if b.get("mode", "keycombo") == "mediakey":
+    mode = b.get("mode", "keycombo")
+    if mode == "mediakey":
         usage = _CONSUMER.get(b.get("keycode", 0), 0)
         if usage:
             send_consumer(usage)
     else:
-        send_key(b.get("modifiers", 0), b.get("keycode", 0))
+        send_key_down(b.get("modifiers", 0), b.get("keycode", 0))
+        key_held[i] = True
+
+
+def dispatch_release(i):
+    if key_held[i]:
+        send_key_up()
+        key_held[i] = False
 
 
 DEBOUNCE_MS = 20
@@ -455,7 +480,9 @@ while True:
                 debounce_until[i] = now + DEBOUNCE_MS
                 if not state:
                     flash_led()
-                    dispatch(i)
+                    dispatch_press(i)
+                else:
+                    dispatch_release(i)
         time.sleep(0.005)
     except Exception:  # noqa: BLE001
         try:
