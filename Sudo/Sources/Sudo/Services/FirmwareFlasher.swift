@@ -188,8 +188,14 @@ final class FirmwareFlasher: ObservableObject {
     private func runFlashFirmwareAndConfig(devicePath: String, settings: SudoSettings) {
         beginFlashing(label: "preparing firmware…")
         do {
-            guard let baseURL = SudoConfigUF2.locateBaseFirmware() else {
-                throw SudoConfigUF2.FlashError.firmwareMissing
+            // Look locally first; if that fails, transparently pull the rolling
+            // firmware release from sudo-supply. Means users without the Pico
+            // SDK installed can still flash a blank board on first run.
+            let baseURL: URL
+            if let local = SudoConfigUF2.locateBaseFirmware() {
+                baseURL = local
+            } else {
+                baseURL = try downloadFirmware()
             }
             let firmwareData = try Data(contentsOf: baseURL)
             updatePhase("building combined UF2 (\(firmwareData.count / 512) firmware blocks + 1 config)")
@@ -309,6 +315,82 @@ final class FirmwareFlasher: ObservableObject {
         }
     }
 
+    // MARK: - Auto-download firmware
+
+    /// Where the rolling firmware release lives. `firmware-latest` is updated
+    /// on every push to `hardware/firmware/**` in sudo-supply by the
+    /// `Build firmware` GitHub Actions workflow.
+    private static let firmwareReleaseAssetURL = URL(
+        string: "https://github.com/ibrue/sudo-supply/releases/download/firmware-latest/sudo-firmware.uf2"
+    )!
+
+    /// Cache location for the downloaded UF2 — same path `locateBaseFirmware()`
+    /// already searches, so subsequent flashes are local-only.
+    private static var firmwareCacheURL: URL {
+        let supportDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Sudo/Firmware")
+        return supportDir.appendingPathComponent("sudo-firmware.uf2")
+    }
+
+    /// Synchronously download the rolling firmware UF2 from GitHub. Surfaces
+    /// progress through the existing `progress` + `phase` publishers so the
+    /// flash UI shows the download as a normal phase. Returns the cached URL.
+    private func downloadFirmware() throws -> URL {
+        updateProgress(0, phase: "downloading firmware from sudo-supply…")
+
+        let dest = Self.firmwareCacheURL
+        try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var downloadResult: Result<URL, Error>!
+
+        let delegate = FirmwareDownloadDelegate { [weak self] received, expected in
+            guard let self = self, expected > 0 else { return }
+            let p = min(Double(received) / Double(expected), 1.0)
+            self.updateProgress(p, phase: "downloading firmware… \(Int(p * 100))%")
+        }
+
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        let task = session.downloadTask(with: Self.firmwareReleaseAssetURL) { tempURL, response, error in
+            defer { semaphore.signal() }
+            if let error = error {
+                downloadResult = .failure(error)
+                return
+            }
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                downloadResult = .failure(NSError(domain: "FirmwareFlasher", code: http.statusCode, userInfo: [
+                    NSLocalizedDescriptionKey: "firmware download HTTP \(http.statusCode) — has CI built it yet? check sudo-supply Actions"
+                ]))
+                return
+            }
+            guard let tempURL = tempURL else {
+                downloadResult = .failure(NSError(domain: "FirmwareFlasher", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: "download produced no file"
+                ]))
+                return
+            }
+            do {
+                try? FileManager.default.removeItem(at: dest)
+                try FileManager.default.moveItem(at: tempURL, to: dest)
+                downloadResult = .success(dest)
+            } catch {
+                downloadResult = .failure(error)
+            }
+        }
+        task.resume()
+        semaphore.wait()
+        session.invalidateAndCancel()
+
+        switch downloadResult! {
+        case .success(let url):
+            updatePhase("firmware cached — preparing flash")
+            return url
+        case .failure(let error):
+            throw error
+        }
+    }
+
     // MARK: - Volume + filesystem helpers
 
     private func findBootloaderVolume() -> String? {
@@ -346,4 +428,24 @@ final class FirmwareFlasher: ObservableObject {
         if bytes >= 1024 { return String(format: "%.0f KB", Double(bytes) / 1024) }
         return "\(bytes) B"
     }
+}
+
+/// URLSession delegate that forwards download progress to a closure.
+private final class FirmwareDownloadDelegate: NSObject, URLSessionDownloadDelegate {
+    let onProgress: (Int64, Int64) -> Void
+    init(onProgress: @escaping (Int64, Int64) -> Void) { self.onProgress = onProgress }
+
+    func urlSession(_ session: URLSession,
+                    downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64,
+                    totalBytesWritten: Int64,
+                    totalBytesExpectedToWrite: Int64) {
+        onProgress(totalBytesWritten, totalBytesExpectedToWrite)
+    }
+
+    // The completion handler on downloadTask handles the finished file —
+    // we don't need anything in didFinishDownloadingTo.
+    func urlSession(_ session: URLSession,
+                    downloadTask: URLSessionDownloadTask,
+                    didFinishDownloadingTo location: URL) {}
 }
