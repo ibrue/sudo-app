@@ -11,8 +11,8 @@ enum PadAction: String, CaseIterable {
     var keyCode: UInt16 {
         switch self {
         case .approve: return 105  // F13
-        case .reject:  return 107  // F14
-        case .action3: return 113  // F15
+        case .reject:  return 64   // F17 (F14/F15 trigger macOS brightness)
+        case .action3: return 79   // F18
         case .action4: return 106  // F16
         }
     }
@@ -20,8 +20,8 @@ enum PadAction: String, CaseIterable {
     var fKeyNumber: Int {
         switch self {
         case .approve: return 13
-        case .reject:  return 14
-        case .action3: return 15
+        case .reject:  return 17
+        case .action3: return 18
         case .action4: return 16
         }
     }

@@ -266,7 +266,8 @@ final class SudoSettings: ObservableObject {
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
         self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]
-        self.hotkeyBindings = (defaults.dictionary(forKey: "hotkeyBindings") as? [String: [String: Int]]) ?? Self.defaultHotkeyBindings
+        let storedBindings = (defaults.dictionary(forKey: "hotkeyBindings") as? [String: [String: Int]]) ?? Self.defaultHotkeyBindings
+        self.hotkeyBindings = Self.migrateBrightnessConflicts(storedBindings)
         self.buttonNames = (defaults.dictionary(forKey: "buttonNames") as? [String: String]) ?? [:]
         if let data = defaults.data(forKey: "buttonSearchTerms"),
            let terms = try? JSONDecoder().decode([String: [String]].self, from: data) {
@@ -438,16 +439,32 @@ final class SudoSettings: ObservableObject {
         lastActiveDate = today
     }
 
-    /// Default hotkey bindings: Ctrl+Shift+F13-F16
+    /// Default hotkey bindings: Ctrl+Shift+F13/F17/F18/F16.
+    /// F14 (107) and F15 (113) are skipped — macOS treats them as display
+    /// brightness keys on Apple keyboards even when modifiers are held.
     static let defaultHotkeyBindings: [String: [String: Int]] = {
         let ctrlShift = Int(CGEventFlags.maskControl.rawValue | CGEventFlags.maskShift.rawValue)
         return [
             "approve": ["keyCode": 105, "modifiers": ctrlShift],  // F13
-            "reject":  ["keyCode": 107, "modifiers": ctrlShift],  // F14
-            "action3": ["keyCode": 113, "modifiers": ctrlShift],  // F15
+            "reject":  ["keyCode": 64,  "modifiers": ctrlShift],  // F17
+            "action3": ["keyCode": 79,  "modifiers": ctrlShift],  // F18
             "action4": ["keyCode": 106, "modifiers": ctrlShift],  // F16
         ]
     }()
+
+    /// Migrate stored bindings that used F14/F15 before we discovered
+    /// macOS swallows those as brightness keys. Called once in init.
+    private static func migrateBrightnessConflicts(
+        _ bindings: [String: [String: Int]]
+    ) -> [String: [String: Int]] {
+        var result = bindings
+        for (action, var binding) in result {
+            if binding["keyCode"] == 107 { binding["keyCode"] = 64  }  // F14 → F17
+            if binding["keyCode"] == 113 { binding["keyCode"] = 79  }  // F15 → F18
+            result[action] = binding
+        }
+        return result
+    }
 
     func resetHotkeyBindings() {
         hotkeyBindings = Self.defaultHotkeyBindings
