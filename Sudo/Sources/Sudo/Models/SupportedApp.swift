@@ -223,7 +223,10 @@ enum AppCategory: String, CaseIterable, Codable {
         switch self {
         case .ai:            return "ai-agent"
         case .terminal:      return "claude-code"
-        case .browser:       return "browsing"
+        // Browsing → YouTube by default. Space already scrolls pages,
+        // J/L are no-ops on non-YouTube sites, F is a safe extra. The
+        // user explicitly chose this over back/forward/refresh.
+        case .browser:       return "youtube"
         case .media:         return "media"
         case .youtube:       return "youtube"
         case .cad:           return "cad"

@@ -269,6 +269,12 @@ final class SudoSettings: ObservableObject {
         for (cat, presetID) in Self.defaultCategoryPresets() where mergedCategoryPresets[cat] == nil {
             mergedCategoryPresets[cat] = presetID
         }
+        // One-time bump: the "browser" default flipped from "browsing" to
+        // "youtube" in v1.4.9. Auto-migrate users still on the old default
+        // so the change takes effect without them digging into settings.
+        if mergedCategoryPresets["browser"] == "browsing" {
+            mergedCategoryPresets["browser"] = "youtube"
+        }
         self.categoryPresets = mergedCategoryPresets
         self.appPresetOverrides = (defaults.dictionary(forKey: "appPresetOverrides") as? [String: String]) ?? [:]
 
