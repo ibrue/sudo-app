@@ -11,6 +11,9 @@ enum PadLEDState: UInt8 {
     /// itself for snappy feedback, but the app also pushes this on programmatic
     /// triggers so the LEDs stay in sync with software-driven actions.
     case buttonPressed  = 0x06
+    /// Tell the firmware to reboot into BOOTSEL mode so we can re-flash it
+    /// without the user physically pressing the BOOTSEL switch.
+    case rebootBootsel  = 0x07
 }
 
 /// Communicates with the sudo pad hardware over USB serial to control LEDs.

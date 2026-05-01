@@ -75,6 +75,10 @@ final class FirmwareFlasher: ObservableObject {
     // MARK: - Detection
 
     /// Check if RP2040 is in bootloader mode (RPI-RP2 volume mounted).
+    /// If the device isn't already in BOOTSEL, ask the running firmware to
+    /// reboot into BOOTSEL via the CDC channel. The user only needs to hold
+    /// the BOOTSEL switch on the very first flash — after that this path
+    /// re-enters BOOTSEL automatically.
     func detectBootloader() {
         DispatchQueue.main.async {
             self.state = .detectingDevice
@@ -82,17 +86,42 @@ final class FirmwareFlasher: ObservableObject {
             self.progress = 0
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let bootloaderPath = self?.findBootloaderVolume()
-            DispatchQueue.main.async {
-                if let path = bootloaderPath {
-                    self?.state = .deviceFound(path: path)
-                    self?.bootloaderDetected = true
-                    self?.phase = "ready to flash"
-                } else {
-                    self?.state = .idle
-                    self?.bootloaderDetected = false
-                    self?.phase = "no device in BOOTSEL — hold the BOOTSEL button while plugging in"
+            guard let self = self else { return }
+
+            // Already mounted? Done.
+            if let path = self.findBootloaderVolume() {
+                DispatchQueue.main.async {
+                    self.state = .deviceFound(path: path)
+                    self.bootloaderDetected = true
+                    self.phase = "ready to flash"
                 }
+                return
+            }
+
+            // Try the soft path: ask the firmware to jump to BOOTSEL.
+            DispatchQueue.main.async {
+                self.phase = "asking firmware to reboot into BOOTSEL…"
+            }
+            PadCommunicator.shared.sendState(.rebootBootsel)
+
+            // Wait up to 8 s for RPI-RP2 to enumerate.
+            let deadline = Date().addingTimeInterval(8)
+            while Date() < deadline {
+                if let path = self.findBootloaderVolume() {
+                    DispatchQueue.main.async {
+                        self.state = .deviceFound(path: path)
+                        self.bootloaderDetected = true
+                        self.phase = "ready to flash"
+                    }
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+
+            DispatchQueue.main.async {
+                self.state = .idle
+                self.bootloaderDetected = false
+                self.phase = "no device — hold BOOTSEL while plugging in (first flash only)"
             }
         }
     }
