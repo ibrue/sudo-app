@@ -49,6 +49,11 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(simpleModePresetID, forKey: "simpleModePresetID") }
     }
 
+    /// True once the user has dismissed the first-launch onboarding flow.
+    @Published var hasCompletedOnboarding: Bool {
+        didSet { defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
+    }
+
     @Published var searchAllApps: Bool {
         didSet { defaults.set(searchAllApps, forKey: "searchAllApps") }
     }
@@ -249,6 +254,7 @@ final class SudoSettings: ObservableObject {
             }
         }
         self.simpleModePresetID = defaults.string(forKey: "simpleModePresetID") ?? "shortcuts"
+        self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
         self.searchAllApps = defaults.bool(forKey: "searchAllApps")
         self.soundEnabled = defaults.object(forKey: "soundEnabled") == nil ? true : defaults.bool(forKey: "soundEnabled")
         self.notifyOnFailure = defaults.object(forKey: "notifyOnFailure") == nil ? true : defaults.bool(forKey: "notifyOnFailure")
