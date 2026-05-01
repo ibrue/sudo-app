@@ -266,6 +266,8 @@ final class SudoEngine: ObservableObject {
     }
 
     private func handleAutoSwitch(category: AppCategory, appName: String) {
+        // Auto-switch only fires in dynamic mode.
+        guard SudoSettings.shared.appMode == .dynamic else { return }
         guard SudoSettings.shared.autoSwitchEnabled else { return }
         guard category != .unknown else { return }
         // Don't switch presets while an action is being processed
@@ -324,6 +326,10 @@ final class SudoEngine: ObservableObject {
             return
         }
         lastActionTime = now
+
+        // Under-glow flash on every accepted press — fast visual feedback that
+        // the press registered, before any pipeline work runs.
+        PadCommunicator.shared.sendState(.buttonPressed)
 
         // Check if this button has a macro assigned
         if !executingMacro, let macro = SudoSettings.shared.macros.first(where: { $0.assignedButton == action.rawValue }) {

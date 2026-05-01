@@ -62,6 +62,26 @@ struct ConfigView: View {
 
             SudoDivider()
 
+            // Mode banner — reminds the user which top-level mode is active
+            HStack(spacing: 6) {
+                Text("mode:")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+                Text("[\(settings.appMode.label)]")
+                    .font(SudoTheme.mono(size: 9, weight: .bold))
+                    .foregroundColor(SudoTheme.accent)
+                Text(settings.appMode.description)
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer()
+            }
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.vertical, 6)
+
+            SudoDivider()
+
             // Scrollable sections
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {

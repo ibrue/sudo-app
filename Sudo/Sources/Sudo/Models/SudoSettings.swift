@@ -2,11 +2,52 @@ import Foundation
 import CoreGraphics
 import ServiceManagement
 
+/// Top-level app mode. Replaces the old "simple mode is computed" model
+/// with three explicit modes the user picks.
+///
+/// - `dynamic`: auto-switches the active preset based on the frontmost app
+///   category. Uses the AI search pipeline. Default for new users.
+/// - `simple`: one fixed preset is locked in. No auto-switch. All buttons are
+///   keyCombo / mediaKey, so the pad can be flashed and work without the app.
+/// - `custom`: per-button manual config. User picks each button's mode +
+///   keycombo + name. Can be flashed to firmware.
+enum AppMode: String, CaseIterable {
+    case dynamic
+    case simple
+    case custom
+
+    var label: String {
+        switch self {
+        case .dynamic: return "dynamic"
+        case .simple:  return "simple"
+        case .custom:  return "custom"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .dynamic: return "auto-switches preset by app"
+        case .simple:  return "one fixed preset, flashable"
+        case .custom:  return "per-button manual config"
+        }
+    }
+}
+
 /// Persisted user settings via UserDefaults.
 final class SudoSettings: ObservableObject {
     static let shared = SudoSettings()
 
     private let defaults = UserDefaults.standard
+
+    /// Top-level app mode (dynamic / simple / custom).
+    @Published var appMode: AppMode {
+        didSet { defaults.set(appMode.rawValue, forKey: "appMode") }
+    }
+
+    /// In simple mode, which preset is locked in.
+    @Published var simpleModePresetID: String {
+        didSet { defaults.set(simpleModePresetID, forKey: "simpleModePresetID") }
+    }
 
     @Published var searchAllApps: Bool {
         didSet { defaults.set(searchAllApps, forKey: "searchAllApps") }
@@ -189,6 +230,25 @@ final class SudoSettings: ObservableObject {
     }
 
     init() {
+        // Restore appMode, migrating old installs:
+        //   - had isSimpleMode buttons → .simple
+        //   - had autoSwitchEnabled (default true) → .dynamic
+        //   - otherwise → .custom
+        if let raw = defaults.string(forKey: "appMode"), let mode = AppMode(rawValue: raw) {
+            self.appMode = mode
+        } else {
+            let buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
+            let allSimple = !buttonModes.isEmpty && buttonModes.values.allSatisfy { $0 == "keyCombo" || $0 == "mediaKey" }
+            let autoSwitch = defaults.object(forKey: "autoSwitchEnabled") == nil ? true : defaults.bool(forKey: "autoSwitchEnabled")
+            if allSimple {
+                self.appMode = .simple
+            } else if autoSwitch {
+                self.appMode = .dynamic
+            } else {
+                self.appMode = .custom
+            }
+        }
+        self.simpleModePresetID = defaults.string(forKey: "simpleModePresetID") ?? "shortcuts"
         self.searchAllApps = defaults.bool(forKey: "searchAllApps")
         self.soundEnabled = defaults.object(forKey: "soundEnabled") == nil ? true : defaults.bool(forKey: "soundEnabled")
         self.notifyOnFailure = defaults.object(forKey: "notifyOnFailure") == nil ? true : defaults.bool(forKey: "notifyOnFailure")
