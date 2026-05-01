@@ -263,12 +263,13 @@ final class FirmwareFlasher: ObservableObject {
 #
 # Lives at /code.py on the CIRCUITPY mass-storage volume. Reads /config.json
 # for per-button mappings; falls back to F13/F17/F18/F16 + ctrl+shift if
-# missing.
+# the file is missing or malformed.
 #
-# Hardware:
+# Hardware (matches sudo-supply.kicad_sch):
 #   GP0–GP3   buttons 1–4 (active-low, internal pull-up)
-#   GP24      LED2 (under-glow, PWM)
-#   GP25      LED1 (under-glow, PWM)
+#
+# Uses only built-in CircuitPython modules — no adafruit_hid, nothing to
+# install in /lib/.
 #
 # Why F13/F17/F18/F16 instead of F13–F16 in default mode:
 #   macOS treats raw F14 / F15 as display-brightness keys on Apple-style
@@ -278,7 +279,6 @@ final class FirmwareFlasher: ObservableObject {
 import board
 import digitalio
 import json
-import pwmio
 import supervisor
 import time
 import usb_hid
@@ -296,8 +296,6 @@ for _device in usb_hid.devices:
 
 # Pin map
 BUTTON_PINS = (board.GP0, board.GP1, board.GP2, board.GP3)
-LED_PIN_1 = board.GP25
-LED_PIN_2 = board.GP24
 
 
 def _make_input(pin):
@@ -307,25 +305,7 @@ def _make_input(pin):
     return p
 
 
-def _make_output(pin):
-    p = digitalio.DigitalInOut(pin)
-    p.direction = digitalio.Direction.OUTPUT
-    p.value = False
-    return p
-
-
 buttons = [_make_input(pin) for pin in BUTTON_PINS]
-
-# GP25 is the Pico's onboard LED — CircuitPython may have already claimed
-# the PWM slice. Fall back to digital on/off so the firmware always starts.
-try:
-    led1 = pwmio.PWMOut(LED_PIN_1, frequency=1000, duty_cycle=0)
-    led2 = pwmio.PWMOut(LED_PIN_2, frequency=1000, duty_cycle=0)
-    _pwm_leds = True
-except Exception:  # noqa: BLE001
-    led1 = _make_output(LED_PIN_1)
-    led2 = _make_output(LED_PIN_2)
-    _pwm_leds = False
 
 
 # Config
@@ -352,7 +332,7 @@ def load_config():
 button_configs = load_config()
 
 
-# HID send helpers — raw reports, no adafruit_hid dependency.
+# HID send helpers
 def _send_keyboard(modifier, keycode):
     if keyboard_device is None:
         return
@@ -362,7 +342,7 @@ def _send_keyboard(modifier, keycode):
         if keycode:
             report[2] = keycode & 0xFF
         keyboard_device.send_report(report)
-    except Exception:  # noqa: BLE001 — never let a USB hiccup kill the loop
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -414,77 +394,25 @@ def dispatch(idx):
             _send_consumer(usage)
 
 
-# Non-blocking LED animation state machine
-ANIM_RAMP_UP_MS = 80
-ANIM_RAMP_DOWN_MS = 200
-ANIM_TOTAL_MS = ANIM_RAMP_UP_MS + ANIM_RAMP_DOWN_MS
-
-_anim_active = False
-_anim_started_at = 0
-
-
-def trigger_animation():
-    global _anim_active, _anim_started_at
-    _anim_active = True
-    _anim_started_at = supervisor.ticks_ms()
-
-
-def update_animation():
-    global _anim_active
-    if not _anim_active:
-        return
-    elapsed = supervisor.ticks_diff(supervisor.ticks_ms(), _anim_started_at)
-    if elapsed < 0:
-        elapsed = 0
-    if elapsed < ANIM_RAMP_UP_MS:
-        level = int((elapsed / ANIM_RAMP_UP_MS) * 65535)
-    elif elapsed < ANIM_TOTAL_MS:
-        progress = (elapsed - ANIM_RAMP_UP_MS) / ANIM_RAMP_DOWN_MS
-        level = int((1.0 - progress) * 65535)
-    else:
-        level = 0
-        _anim_active = False
-    if _pwm_leds:
-        led1.duty_cycle = level
-        led2.duty_cycle = level
-    else:
-        on = level > 32767
-        led1.value = on
-        led2.value = on
-
-
-def leds_off():
-    if _pwm_leds:
-        led1.duty_cycle = 0
-        led2.duty_cycle = 0
-    else:
-        led1.value = False
-        led2.value = False
-
-
 # Main loop
 DEBOUNCE_MS = 20
 last_state = [True] * 4
 debounce_until = [0] * 4
-leds_off()
 
-# Top-level try/except so a transient USB blip can't silently kill the
-# firmware. Without this, any uncaught exception (USB suspend race,
-# memory hiccup, etc.) drops to the REPL and the device stops responding.
 while True:
     try:
         now = supervisor.ticks_ms()
-        update_animation()
+
         for i in range(4):
             if supervisor.ticks_diff(now, debounce_until[i]) < 0:
                 continue
-            state = buttons[i].value
+            state = buttons[i].value  # True = released
             if state != last_state[i]:
                 last_state[i] = state
                 debounce_until[i] = now + DEBOUNCE_MS
                 if not state:
-                    trigger_animation()
                     dispatch(i)
+
         time.sleep(0.005)
     except Exception:  # noqa: BLE001
         try:
