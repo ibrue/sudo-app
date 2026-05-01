@@ -586,3 +586,36 @@ private final class FirmwareDownloadDelegate: NSObject, URLSessionDownloadDelega
                     downloadTask: URLSessionDownloadTask,
                     didFinishDownloadingTo location: URL) {}
 }
+
+// MARK: - Connection-status label
+
+import SwiftUI
+
+extension FirmwareFlasher {
+    struct ConnectionLabel {
+        let label: String
+        let colour: Color
+    }
+
+    /// Human-readable status used by the settings device panel and the
+    /// onboarding flow. Reads `state` so the same source of truth drives
+    /// every "is the pad plugged in?" UI.
+    var deviceConnectionLabel: ConnectionLabel {
+        switch state {
+        case .readyForConfig:
+            return .init(label: "device: connected (CircuitPython)", colour: SudoTheme.accent)
+        case .readyForFirmware:
+            return .init(label: "device: in BOOTSEL — needs install", colour: Color(nsColor: .systemYellow))
+        case .detectingDevice:
+            return .init(label: "device: scanning…", colour: Color(nsColor: .systemYellow))
+        case .flashing:
+            return .init(label: "device: flashing", colour: SudoTheme.accent)
+        case .success:
+            return .init(label: "device: just flashed", colour: SudoTheme.accent)
+        case .error(let msg):
+            return .init(label: "device: error — \(msg)", colour: Color(nsColor: .systemRed))
+        case .idle:
+            return .init(label: "device: not detected", colour: Color(nsColor: .separatorColor))
+        }
+    }
+}

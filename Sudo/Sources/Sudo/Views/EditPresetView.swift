@@ -147,12 +147,19 @@ struct EditPresetView: View {
 
                     Spacer()
 
-                    Button(isRecording ? "press a key…" : (draftKeyCode == 0 ? "record" : "re-record")) {
-                        isRecording ? stopRecording() : startRecording()
+                    // Two button branches because Swift's type inferencer
+                    // can't unify .borderedProminent and .bordered through
+                    // a ternary — they're distinct types.
+                    if isRecording {
+                        Button("press a key…") { stopRecording() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .tint(SudoTheme.accent)
+                    } else {
+                        Button(draftKeyCode == 0 ? "record" : "re-record") { startRecording() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                     }
-                    .buttonStyle(isRecording ? .borderedProminent : .bordered)
-                    .controlSize(.small)
-                    .tint(isRecording ? SudoTheme.accent : .accentColor)
 
                     if draftKeyCode != 0 {
                         Button("clear") {
