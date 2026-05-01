@@ -36,6 +36,17 @@ struct ConfigView: View {
     @State private var editRuleContextContains = ""
     @State private var editRuleContextExcludes = ""
 
+    /// UI 7: filter sections by title substring. Empty = show everything.
+    @State private var searchQuery: String = ""
+
+    private func matches(_ title: String, alsoMatching extras: String...) -> Bool {
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty { return true }
+        if title.lowercased().contains(q) { return true }
+        for extra in extras where extra.lowercased().contains(q) { return true }
+        return false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header with back button
@@ -62,7 +73,7 @@ struct ConfigView: View {
 
             SudoDivider()
 
-            // Mode banner — reminds the user which top-level mode is active
+            // Mode + search bar
             HStack(spacing: 6) {
                 Text("mode:")
                     .font(SudoTheme.mono(size: 9))
@@ -70,74 +81,97 @@ struct ConfigView: View {
                 Text("[\(settings.appMode.label)]")
                     .font(SudoTheme.mono(size: 9, weight: .bold))
                     .foregroundColor(SudoTheme.accent)
-                Text(settings.appMode.description)
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(SudoTheme.textMuted)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
                 Spacer()
+                // UI 7: filter sections by typing
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+                TextField("filter…", text: $searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.text)
+                    .frame(maxWidth: 100)
+                if !searchQuery.isEmpty {
+                    Button(action: { searchQuery = "" }) {
+                        Text("✗")
+                            .font(SudoTheme.mono(size: 9))
+                            .foregroundColor(SudoTheme.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("clear filter")
+                }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 6)
 
             SudoDivider()
 
-            // Scrollable sections
+            // Scrollable sections — each gated on `matches(...)` so typing in
+            // the filter narrows the list. Pass extra strings for sections
+            // whose names users might search by content (e.g. "hotkeys",
+            // "webhook", "telemetry" all live under settings).
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // 1. Button remapping
-                    section {
-                        SectionHeader("button remapping", isExpanded: sectionBinding("remap"))
-                        if settings.expandedSections.contains("remap") { remapContent }
+                    if matches("button remapping", alsoMatching: "buttons", "keys", "remap") {
+                        section {
+                            SectionHeader("button remapping", isExpanded: sectionBinding("remap"))
+                            if settings.expandedSections.contains("remap") { remapContent }
+                        }
                     }
 
-                    // 2. Auto-switch (includes per-app overrides)
-                    section {
-                        SectionHeader("auto-switch", isExpanded: sectionBinding("autoswitch"),
-                                      badge: settings.autoSwitchEnabled ? "on" : nil)
-                        if settings.expandedSections.contains("autoswitch") { autoSwitchContent }
+                    if matches("auto-switch", alsoMatching: "preset", "category") {
+                        section {
+                            SectionHeader("auto-switch", isExpanded: sectionBinding("autoswitch"),
+                                          badge: settings.autoSwitchEnabled ? "on" : nil)
+                            if settings.expandedSections.contains("autoswitch") { autoSwitchContent }
+                        }
                     }
 
-                    // 3. Macros
-                    section {
-                        SectionHeader("macros", isExpanded: sectionBinding("macros"), count: settings.macros.count)
-                        if settings.expandedSections.contains("macros") { macrosContent }
+                    if matches("macros") {
+                        section {
+                            SectionHeader("macros", isExpanded: sectionBinding("macros"), count: settings.macros.count)
+                            if settings.expandedSections.contains("macros") { macrosContent }
+                        }
                     }
 
-                    // 6. Auto-approve
-                    section {
-                        SectionHeader("auto-approve", isExpanded: sectionBinding("autoapprove"),
-                                      badge: settings.autoApproveEnabled ? "on" : nil)
-                        if settings.expandedSections.contains("autoapprove") { autoApproveContent }
+                    if matches("auto-approve", alsoMatching: "rules") {
+                        section {
+                            SectionHeader("auto-approve", isExpanded: sectionBinding("autoapprove"),
+                                          badge: settings.autoApproveEnabled ? "on" : nil)
+                            if settings.expandedSections.contains("autoapprove") { autoApproveContent }
+                        }
                     }
 
-                    // 7. Settings (toggles + hotkeys)
-                    section {
-                        SectionHeader("settings", isExpanded: sectionBinding("settings"))
-                        if settings.expandedSections.contains("settings") { settingsContent }
+                    if matches("settings", alsoMatching: "hotkeys", "webhook", "telemetry", "sound", "launch") {
+                        section {
+                            SectionHeader("settings", isExpanded: sectionBinding("settings"))
+                            if settings.expandedSections.contains("settings") { settingsContent }
+                        }
                     }
 
-                    // 8. Developer API
-                    section {
-                        SectionHeader("developer api", isExpanded: sectionBinding("api"),
-                                      badge: apiServer.isRunning ? "on" : nil)
-                        if settings.expandedSections.contains("api") { apiContent }
+                    if matches("developer api", alsoMatching: "api", "mcp", "port", "key") {
+                        section {
+                            SectionHeader("developer api", isExpanded: sectionBinding("api"),
+                                          badge: apiServer.isRunning ? "on" : nil)
+                            if settings.expandedSections.contains("api") { apiContent }
+                        }
                     }
 
-                    // 9. History
-                    section {
-                        SectionHeader("history", isExpanded: sectionBinding("history"), count: engine.actionLog.count)
-                        if settings.expandedSections.contains("history") { historyContent }
+                    if matches("history", alsoMatching: "log") {
+                        section {
+                            SectionHeader("history", isExpanded: sectionBinding("history"), count: engine.actionLog.count)
+                            if settings.expandedSections.contains("history") { historyContent }
+                        }
                     }
 
-                    // 10. Debug console
-                    section {
-                        SectionHeader("debug console", isExpanded: sectionBinding("debug"), count: debugLogger.entries.count)
-                        if settings.expandedSections.contains("debug") { debugContent }
+                    if matches("debug console", alsoMatching: "logs") {
+                        section {
+                            SectionHeader("debug console", isExpanded: sectionBinding("debug"), count: debugLogger.entries.count)
+                            if settings.expandedSections.contains("debug") { debugContent }
+                        }
                     }
 
-                    // 11. Plugins (conditional)
-                    if pluginManager.loadedPlugins.count > 0 {
+                    if pluginManager.loadedPlugins.count > 0, matches("plugins") {
                         section {
                             SectionHeader("plugins", isExpanded: .constant(true), count: pluginManager.loadedPlugins.count)
                             ForEach(pluginManager.loadedPlugins) { plugin in
@@ -148,8 +182,7 @@ struct ConfigView: View {
                         }
                     }
 
-                    // 11. Terminal (dev only)
-                    if settings.isDeveloperMode {
+                    if settings.isDeveloperMode, matches("terminal", alsoMatching: "build", "rebuild") {
                         section {
                             SectionHeader("terminal", isExpanded: sectionBinding("terminal"),
                                           count: rebuilder.buildLog.isEmpty ? nil : rebuilder.buildLog.count)
