@@ -43,32 +43,17 @@ fi
 cd "$SCRIPT_DIR"
 
 # ----------------------------------------------------------------------------
-# Bundle the CircuitPython firmware artefacts so the app can flash a fresh
-# pad with one click.
+# Optional: bundle the CircuitPython UF2 to skip the runtime download.
 #
-# `code.py`  — required. The firmware itself. Sourced from
-#                ../sudo-supply/hardware/firmware/code.py (or $SUDO_CODE_PY).
-# `circuitpython-pico.uf2` — optional. If missing, the app downloads it from
-#                downloads.circuitpython.org on first flash and caches it.
+# `code.py` is embedded as a Swift string constant inside the app — no
+# bundling needed for it, the source of truth lives in
+# Sudo/Sources/Sudo/Services/FirmwareFlasher.swift (kept in sync with
+# sudo-supply/hardware/firmware/code.py).
 #
-# We don't try to compile anything here — CircuitPython ships a binary UF2,
-# and code.py is plain text.
+# `circuitpython-pico.uf2` — optional override. If missing, the app
+# downloads it from downloads.circuitpython.org on first flash and caches it.
 # ----------------------------------------------------------------------------
 echo ""
-echo "[sudo] Bundling firmware artefacts..."
-
-# code.py
-CODE_PY="${SUDO_CODE_PY:-$SCRIPT_DIR/../sudo-supply/hardware/firmware/code.py}"
-if [ -f "$CODE_PY" ]; then
-    cp "$CODE_PY" "$RESOURCES/code.py"
-    echo "[sudo] Bundled code.py ($(du -h "$RESOURCES/code.py" | cut -f1))"
-else
-    echo "[sudo] WARN: code.py not found at $CODE_PY"
-    echo "[sudo]       Set \$SUDO_CODE_PY or clone ibrue/sudo-supply as a sibling."
-    echo "[sudo]       The app will fail at flash time with a clear error."
-fi
-
-# CircuitPython UF2 (optional — auto-downloaded if missing)
 CP_UF2="${SUDO_CIRCUITPYTHON_UF2:-}"
 if [ -n "$CP_UF2" ] && [ -f "$CP_UF2" ]; then
     cp "$CP_UF2" "$RESOURCES/circuitpython-pico.uf2"

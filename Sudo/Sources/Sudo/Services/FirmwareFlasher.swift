@@ -139,14 +139,12 @@ final class FirmwareFlasher: ObservableObject {
     private func writeConfigToCircuitPy(path: String, settings: SudoSettings) {
         beginFlashing(label: "writing code.py and config.json…", at: .write)
         do {
-            let codeSrc = try locateCodePy()
             let codeDst = URL(fileURLWithPath: path).appendingPathComponent("code.py")
             let configDst = URL(fileURLWithPath: path).appendingPathComponent("config.json")
             let configData = try SudoConfigJSON.generate(from: settings)
 
-            // Copy code.py first — this is the larger / less-changing file.
-            updateProgress(0.1, phase: "copying code.py…")
-            try copyOverwriting(src: codeSrc, dst: codeDst)
+            updateProgress(0.1, phase: "writing code.py…")
+            try Self.embeddedCodePy.write(to: codeDst, atomically: true, encoding: .utf8)
             updateProgress(0.6, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
             try writeOverwriting(data: configData, to: configDst)
 
@@ -251,20 +249,185 @@ final class FirmwareFlasher: ObservableObject {
         return try result.get()
     }
 
-    private func locateCodePy() throws -> URL {
-        if let bundleURL = Bundle.main.url(forResource: "code", withExtension: "py") {
-            return bundleURL
-        }
-        // Dev fallback: sibling sudo-supply checkout
-        let supplyPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("sudo-supply/hardware/firmware/code.py")
-        if FileManager.default.fileExists(atPath: supplyPath.path) {
-            return supplyPath
-        }
-        throw NSError(domain: "FirmwareFlasher", code: 3, userInfo: [
-            NSLocalizedDescriptionKey: "code.py not bundled — rebuild with ./build.sh from a fresh checkout"
-        ])
-    }
+    // MARK: - Embedded code.py
+    //
+    // The CircuitPython firmware is small enough (~150 lines) to embed
+    // verbatim in the app. That makes it impossible to ship a build that
+    // can't find it, regardless of whether build.sh found a sibling
+    // sudo-supply checkout or whether the bundle resource step ran.
+    //
+    // KEEP IN SYNC with sudo-supply/hardware/firmware/code.py.
+
+    private static let embeddedCodePy: String = #"""
+# sudo macropad firmware — CircuitPython
+#
+# Lives at /code.py on the CIRCUITPY mass-storage volume. Reads /config.json
+# for per-button mappings; falls back to F13–F16 + ctrl+shift if missing.
+#
+# Hardware (matches sudo-supply.kicad_sch):
+#   GP0–GP3   buttons 1–4 (active-low, internal pull-up)
+#   GP24      LED2 (under-glow)
+#   GP25      LED1 (under-glow)
+#
+# Uses only built-in CircuitPython modules (`usb_hid`, `digitalio`,
+# `supervisor`) — sends raw HID reports rather than depending on the
+# adafruit_hid library, so there's nothing to install in /lib/.
+
+import board
+import digitalio
+import json
+import supervisor
+import time
+import usb_hid
+
+
+# HID device discovery
+keyboard_device = None
+consumer_device = None
+for _device in usb_hid.devices:
+    if _device.usage_page == 0x01 and _device.usage == 0x06:
+        keyboard_device = _device
+    elif _device.usage_page == 0x0C and _device.usage == 0x01:
+        consumer_device = _device
+
+
+# Pin map
+BUTTON_PINS = (board.GP0, board.GP1, board.GP2, board.GP3)
+LED_PINS = (board.GP25, board.GP24)
+
+
+def _make_input(pin):
+    p = digitalio.DigitalInOut(pin)
+    p.direction = digitalio.Direction.INPUT
+    p.pull = digitalio.Pull.UP
+    return p
+
+
+def _make_output(pin):
+    p = digitalio.DigitalInOut(pin)
+    p.direction = digitalio.Direction.OUTPUT
+    p.value = False
+    return p
+
+
+buttons = [_make_input(pin) for pin in BUTTON_PINS]
+leds = [_make_output(pin) for pin in LED_PINS]
+
+
+# Config
+DEFAULT_BUTTONS = [
+    {"mode": "keycombo", "keycode": 0x68, "modifiers": 0x03, "name": "button 1"},
+    {"mode": "keycombo", "keycode": 0x6A, "modifiers": 0x03, "name": "button 2"},
+    {"mode": "keycombo", "keycode": 0x69, "modifiers": 0x03, "name": "button 3"},
+    {"mode": "keycombo", "keycode": 0x6B, "modifiers": 0x03, "name": "button 4"},
+]
+
+
+def load_config():
+    try:
+        with open("/config.json") as f:
+            data = json.load(f)
+        cfg = data.get("buttons", DEFAULT_BUTTONS)
+        if len(cfg) != 4:
+            return DEFAULT_BUTTONS
+        return cfg
+    except (OSError, ValueError):
+        return DEFAULT_BUTTONS
+
+
+button_configs = load_config()
+
+
+# HID send helpers — raw reports, no adafruit_hid dependency.
+def _send_keyboard(modifier, keycode):
+    if keyboard_device is None:
+        return
+    report = bytearray(8)
+    report[0] = modifier & 0xFF
+    if keycode:
+        report[2] = keycode & 0xFF
+    try:
+        keyboard_device.send_report(report)
+    except OSError:
+        pass
+
+
+def _release_keyboard():
+    if keyboard_device is None:
+        return
+    try:
+        keyboard_device.send_report(bytearray(8))
+    except OSError:
+        pass
+
+
+def _send_consumer(usage):
+    if consumer_device is None:
+        return
+    pressed = bytearray(2)
+    pressed[0] = usage & 0xFF
+    pressed[1] = (usage >> 8) & 0xFF
+    try:
+        consumer_device.send_report(pressed)
+        time.sleep(0.01)
+        consumer_device.send_report(bytearray(2))
+    except OSError:
+        pass
+
+
+_CONSUMER_CODES = {
+    16: 0xCD,
+    17: 0xB5,
+    18: 0xB6,
+    19: 0xB7,
+    20: 0xE2,
+}
+
+
+def dispatch(idx):
+    cfg = button_configs[idx]
+    mode = cfg.get("mode", "keycombo")
+    keycode = cfg.get("keycode", 0)
+
+    if mode == "keycombo" or mode == "passthrough":
+        modifiers = cfg.get("modifiers", 0)
+        _send_keyboard(modifiers, keycode)
+        time.sleep(0.015)
+        _release_keyboard()
+    elif mode == "mediakey":
+        usage = _CONSUMER_CODES.get(keycode, 0)
+        if usage:
+            _send_consumer(usage)
+
+
+def leds_set(on):
+    for led in leds:
+        led.value = on
+
+
+# Main loop
+DEBOUNCE_MS = 20
+last_state = [True] * 4
+debounce_until = [0] * 4
+
+leds_set(False)
+
+while True:
+    now = supervisor.ticks_ms()
+    for i in range(4):
+        if now - debounce_until[i] < 0:
+            continue
+        state = buttons[i].value
+        if state != last_state[i]:
+            last_state[i] = state
+            debounce_until[i] = now + DEBOUNCE_MS
+            if not state:
+                leds_set(True)
+                dispatch(i)
+                time.sleep(0.05)
+                leds_set(False)
+    time.sleep(0.005)
+"""#
 
     // MARK: - Copy helpers
 
