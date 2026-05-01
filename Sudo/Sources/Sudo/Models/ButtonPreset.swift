@@ -66,6 +66,7 @@ struct ButtonPreset: Identifiable {
         browsing,
         discord,
         cad,
+        bambu,
         videoEditing,
         writing,
         communication,
@@ -126,25 +127,26 @@ struct ButtonPreset: Identifiable {
         ]
     )
 
+    /// Claude Code / terminal AI agents render their permission prompts
+    /// as plain text — "1.Yes 2.No 3.Yes,allow all (Esc to abort)" — and
+    /// the user picks by pressing the matching digit. Send the digit
+    /// directly via keyCombo instead of running the AX search pipeline:
+    /// faster, no AppleScript / OCR fallbacks, no chance of clicking the
+    /// wrong thing in some other window.
     static let claudeCode = ButtonPreset(
         id: "claude-code",
         name: "Claude Code (terminal)",
-        description: "optimized for Claude Code prompts",
+        description: "1 / 2 / 3 / esc — direct keystrokes",
         buttons: [
-            .approve: .init(displayName: "Yes", searchTerms: [
-                "Yes", "Allow", "Approve", "Accept", "Confirm",
-                "yes", "allow", "y",
-            ]),
-            .reject: .init(displayName: "No", searchTerms: [
-                "No", "Deny", "Reject", "Cancel", "no", "n",
-            ]),
-            .action3: .init(displayName: "Yes, allow all", searchTerms: [
-                "Yes, allow all", "Allow all", "allow all edits",
-                "Yes, allow all edits this session",
-            ]),
-            .action4: .init(displayName: "Escape / Cancel", searchTerms: [
-                "Cancel", "Escape", "Stop", "Abort", "Ctrl+C",
-            ]),
+            // mac virtual keycodes: 1=18, 2=19, 3=20, esc=53
+            .approve: .init(displayName: "Yes", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 18, modifiers: [])),
+            .reject:  .init(displayName: "No", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 19, modifiers: [])),
+            .action3: .init(displayName: "Yes, allow all", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 20, modifiers: [])),
+            .action4: .init(displayName: "Escape / Cancel", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 53, modifiers: [])),
         ]
     )
 
@@ -254,6 +256,31 @@ struct ButtonPreset: Identifiable {
                            keyCombo: KeyCombo(keyCode: KeyCombo.s, modifiers: .maskCommand)),
             .action4: .init(displayName: "Fit View", searchTerms: [], mode: .keyCombo,
                            keyCombo: KeyCombo(keyCode: KeyCombo.f6, modifiers: [])),
+        ]
+    )
+
+    /// Bambu Studio — slicer workflow: arrange parts, slice, save, send
+    /// to print. Auto-applied when Bambu Studio is frontmost via the
+    /// per-app override seeded in SudoSettings.
+    /// Layout (bottom → top):
+    ///   1 (bottom)   ⌘R    slice plate
+    ///   2            A     auto arrange
+    ///   3            ⌘S    save
+    ///   4 (top)      ⌘P    send to print
+    static let bambu = ButtonPreset(
+        id: "bambu",
+        name: "Bambu Studio",
+        description: "slice / arrange / save / print",
+        buttons: [
+            // mac virtual keycodes: r=15, a=0, s=1, p=35
+            .approve: .init(displayName: "Slice Plate", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 15, modifiers: .maskCommand)),
+            .action3: .init(displayName: "Auto Arrange", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 0, modifiers: [])),
+            .reject:  .init(displayName: "Save", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 1, modifiers: .maskCommand)),
+            .action4: .init(displayName: "Send to Print", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 35, modifiers: .maskCommand)),
         ]
     )
 

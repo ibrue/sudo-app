@@ -93,6 +93,10 @@ enum SupportedApp: String, CaseIterable {
         "com.sketchup.SketchUp",
         "com.solidworks.SOLIDWORKS",
         "com.autodesk.inventor",
+        // Slicer / 3D-print prep — same category, different default preset
+        // (overridden per-bundle-ID in SudoSettings).
+        "com.bambulab.bambu-studio",
+        "com.bambulab.BambuStudio",
     ]
 
     static let videoEditingBundleIDs: Set<String> = [
@@ -139,7 +143,7 @@ enum SupportedApp: String, CaseIterable {
 
     /// Name substrings used to detect category when bundle ID doesn't match
     static let categoryNameHints: [(substring: String, category: AppCategory)] = [
-        ("fusion", .cad), ("solidworks", .cad), ("autocad", .cad), ("rhino", .cad), ("freecad", .cad), ("onshape", .cad),
+        ("fusion", .cad), ("solidworks", .cad), ("autocad", .cad), ("rhino", .cad), ("freecad", .cad), ("onshape", .cad), ("bambu", .cad),
         ("spotify", .media), ("music", .media), ("vlc", .media), ("itunes", .media),
         ("final cut", .videoEditing), ("davinci", .videoEditing), ("premiere", .videoEditing), ("capcut", .videoEditing),
         ("notion", .writing), ("obsidian", .writing), ("word", .writing), ("pages", .writing), ("bear", .writing),

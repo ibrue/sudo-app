@@ -2,7 +2,7 @@
 
 Menu bar daemon for the [sudo macro pad](https://sudo.supply). Translates physical button presses into per-app actions: AI permission approvals, media controls, YouTube playback, custom keystrokes.
 
-Current version: **1.5.1-beta**.
+Current version: **1.5.2-beta**.
 
 ## Button Layout
 
@@ -133,6 +133,7 @@ Uses the macOS Accessibility API — same interface as VoiceOver and Shortcuts.a
 
 ## Recent changelog (highlights)
 
+- **1.5.2** — Bambu Studio preset (slice / arrange / save / print, auto-applied) + Claude Code preset switched from AI search to direct 1/2/3/Esc keystrokes
 - **1.5.1** — both under-glow LEDs flash on press (was GP24-only)
 - **1.5.0** — firmware press-and-hold (key-down on press, key-up on release)
 - **1.4.9** — browser default switched to YouTube preset

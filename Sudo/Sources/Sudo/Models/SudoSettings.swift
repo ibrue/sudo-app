@@ -276,7 +276,21 @@ final class SudoSettings: ObservableObject {
             mergedCategoryPresets["browser"] = "youtube"
         }
         self.categoryPresets = mergedCategoryPresets
-        self.appPresetOverrides = (defaults.dictionary(forKey: "appPresetOverrides") as? [String: String]) ?? [:]
+        // Per-app preset overrides take priority over category mapping.
+        // Seed shipped overrides for apps where the generic category
+        // preset isn't a great fit (Bambu Studio is technically CAD but
+        // wants a slicer-specific preset). Only fills in keys the user
+        // hasn't already customised.
+        let savedOverrides = (defaults.dictionary(forKey: "appPresetOverrides") as? [String: String]) ?? [:]
+        var mergedOverrides = savedOverrides
+        let shippedOverrides: [String: String] = [
+            "com.bambulab.bambu-studio": "bambu",
+            "com.bambulab.BambuStudio":  "bambu",
+        ]
+        for (bundleID, presetID) in shippedOverrides where mergedOverrides[bundleID] == nil {
+            mergedOverrides[bundleID] = presetID
+        }
+        self.appPresetOverrides = mergedOverrides
 
         self.expandedSections = Set(defaults.stringArray(forKey: "expandedSections") ?? [])
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
