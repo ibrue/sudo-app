@@ -502,6 +502,18 @@ final class SudoEngine: ObservableObject {
 
     // MARK: - Helpers
 
+    /// Post a Return / Enter keystroke at the HID system level. Used to
+    /// dismiss app-side confirmation dialogs (e.g. Fusion's Save Version
+    /// sheet) after a successful primary action.
+    private static func postReturnKey() {
+        let kReturn: CGKeyCode = 36
+        guard let down = CGEvent(keyboardEventSource: nil, virtualKey: kReturn, keyDown: true),
+              let up   = CGEvent(keyboardEventSource: nil, virtualKey: kReturn, keyDown: false)
+        else { return }
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+    }
+
     private func handleExecResult(_ execResult: ActionExecutor.ExecutionResult, action: PadAction, app: String, method: String, context: String? = nil) {
         switch execResult {
         case .success(let detail):
@@ -565,8 +577,22 @@ final class SudoEngine: ObservableObject {
                 )
             }
 
-            // Reset flash — quick for success, longer for failure
-            let resetDelay: Double = success ? 0.8 : 1.5
+            // Fusion 360 quirk: Cmd+S pops a "Save Version" dialog that
+            // requires Enter to dismiss. After a successful save in
+            // Fusion, post Return ~1s later so the save actually commits
+            // instead of leaving the dialog open.
+            if success
+                && app.lowercased().contains("fusion")
+                && action.displayName.lowercased().contains("save") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    Self.postReturnKey()
+                }
+            }
+
+            // Hold the transient menu-bar label long enough to read it
+            // ([✓ approve] / [✗ reject]) before falling back to [sudo].
+            // Failures linger longer so the user can register what failed.
+            let resetDelay: Double = success ? 2.5 : 4.0
             DispatchQueue.main.asyncAfter(deadline: .now() + resetDelay) {
                 if self.lastResult == .success || self.lastResult == .failure {
                     self.lastResult = .idle

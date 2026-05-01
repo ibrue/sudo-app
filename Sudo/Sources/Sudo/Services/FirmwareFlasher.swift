@@ -337,6 +337,44 @@ for pin in PINS:
     buttons.append(p)
 
 
+# LED feedback on GP24 only — GP25 is the Pico's onboard LED and
+# CircuitPython uses it for boot / error patterns. try/except so a board
+# without LED2 wired up still runs.
+LED_PIN = board.GP24
+LED_FLASH_MS = 120
+_led_off_at = 0
+try:
+    _led = digitalio.DigitalInOut(LED_PIN)
+    _led.direction = digitalio.Direction.OUTPUT
+    _led.value = False
+    _led_ok = True
+except Exception:  # noqa: BLE001
+    _led_ok = False
+
+
+def flash_led():
+    global _led_off_at
+    if not _led_ok:
+        return
+    try:
+        _led.value = True
+        _led_off_at = supervisor.ticks_ms() + LED_FLASH_MS
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def update_led():
+    global _led_off_at
+    if not _led_ok or _led_off_at == 0:
+        return
+    try:
+        if ticks_diff(supervisor.ticks_ms(), _led_off_at) >= 0:
+            _led.value = False
+            _led_off_at = 0
+    except Exception:  # noqa: BLE001
+        _led_off_at = 0
+
+
 DEFAULT_BUTTONS = [
     {"mode": "keycombo", "keycode": 0x68, "modifiers": 0x03},  # F13
     {"mode": "keycombo", "keycode": 0x6D, "modifiers": 0x03},  # F18
@@ -407,6 +445,7 @@ debounce_until = [0] * 4
 while True:
     try:
         now = supervisor.ticks_ms()
+        update_led()
         for i in range(4):
             if ticks_diff(now, debounce_until[i]) < 0:
                 continue
@@ -415,6 +454,7 @@ while True:
                 last_state[i] = state
                 debounce_until[i] = now + DEBOUNCE_MS
                 if not state:
+                    flash_led()
                     dispatch(i)
         time.sleep(0.005)
     except Exception:  # noqa: BLE001

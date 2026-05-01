@@ -166,7 +166,7 @@ struct ButtonPreset: Identifiable {
     static let mediaControls = ButtonPreset(
         id: "media",
         name: "Media Controls",
-        description: "play / next / prev / like",
+        description: "play / next / prev / like (spotify)",
         buttons: [
             .approve: .init(displayName: "Play / Pause", searchTerms: [], mode: .mediaKey,
                            keyCombo: KeyCombo(keyCode: 16, modifiers: [])),  // NX_KEYTYPE_PLAY
@@ -174,10 +174,11 @@ struct ButtonPreset: Identifiable {
                           keyCombo: KeyCombo(keyCode: 17, modifiers: [])),   // NX_KEYTYPE_NEXT
             .action3: .init(displayName: "Previous Track", searchTerms: [], mode: .mediaKey,
                            keyCombo: KeyCombo(keyCode: 18, modifiers: [])),  // NX_KEYTYPE_PREVIOUS
-            .action4: .init(displayName: "Like / Star", searchTerms: [
-                "Love", "Like", "Favorite", "Heart", "Star",
-                "Add to Favorites", "Add to Library",
-            ]),
+            // Spotify's "save to liked songs" keyboard shortcut on macOS
+            // is Opt+Shift+B. Direct keystroke, no AI-search needed.
+            // (mac virtual key 11 = "b".)
+            .action4: .init(displayName: "Like Song", searchTerms: [], mode: .keyCombo,
+                           keyCombo: KeyCombo(keyCode: 11, modifiers: [.maskAlternate, .maskShift])),
         ]
     )
 
