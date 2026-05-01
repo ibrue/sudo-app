@@ -11,13 +11,26 @@ final class HotkeyListener {
     private var runLoopSource: CFRunLoopSource?
     private var handler: ActionHandler?
 
-    /// Whether the event tap was created successfully
-    var isListening: Bool { eventTap != nil }
+    /// Whether the tap is created AND currently enabled. macOS will disable
+    /// the tap if it ever takes too long to process an event; if we only
+    /// checked `eventTap != nil` we'd happily report "listening" while
+    /// keystrokes silently dropped on the floor — which is exactly the
+    /// "doesn't work for a couple of minutes" symptom.
+    var isListening: Bool {
+        guard let tap = eventTap else { return false }
+        return CGEvent.tapIsEnabled(tap: tap)
+    }
 
     func start(handler: @escaping ActionHandler) {
         self.handler = handler
 
-        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
+        // Listen for keyDown plus the two flavours of "system disabled
+        // your tap" so we can re-enable instantly instead of waiting for
+        // a periodic safety check to notice.
+        let eventMask: CGEventMask =
+            (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.tapDisabledByTimeout.rawValue)
+            | (1 << CGEventType.tapDisabledByUserInput.rawValue)
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
         guard let tap = CGEvent.tapCreate(
@@ -25,10 +38,10 @@ final class HotkeyListener {
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: eventMask,
-            callback: { _, _, event, userInfo in
+            callback: { _, type, event, userInfo in
                 guard let userInfo = userInfo else { return Unmanaged.passUnretained(event) }
                 let listener = Unmanaged<HotkeyListener>.fromOpaque(userInfo).takeUnretainedValue()
-                return listener.handleEvent(event)
+                return listener.handleEvent(type: type, event: event)
             },
             userInfo: selfPtr
         ) else {
@@ -55,6 +68,17 @@ final class HotkeyListener {
         if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
     }
 
+    /// Defensive: the engine's permission timer calls this every few
+    /// seconds. If macOS disabled the tap (and somehow we missed the
+    /// event in the callback), re-enable it.
+    func ensureEnabled() {
+        guard let tap = eventTap else { return }
+        if !CGEvent.tapIsEnabled(tap: tap) {
+            CGEvent.tapEnable(tap: tap, enable: true)
+            print("[sudo] Re-enabled event tap (was disabled)")
+        }
+    }
+
     func stop() {
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
@@ -67,7 +91,18 @@ final class HotkeyListener {
         handler = nil
     }
 
-    private func handleEvent(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+    private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        // macOS killed the tap (timeout or user input flood). Re-enable
+        // immediately so we don't silently drop keystrokes for the rest
+        // of the session.
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let tap = eventTap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+                print("[sudo] Event tap was disabled (\(type == .tapDisabledByTimeout ? "timeout" : "user input")) — re-enabled")
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
 

@@ -109,11 +109,23 @@ final class SudoEngine: ObservableObject {
         // macOS only shows the toggle in Privacy settings after the first request.
         requestAutomationPermission()
 
-        // Re-check permissions every 3 seconds until connected
+        // Permission + tap-health timer. Runs forever (no longer
+        // self-invalidates once connected) so we can keep the event tap
+        // alive across the lifetime of the app:
+        //   - first tries the cheap recovery: re-enable a disabled tap
+        //   - if that doesn't restore listening, fall back to recreating
+        //     the tap entirely
+        //   - syncs `isConnected` so the UI stays accurate
         permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            if !self.isConnected {
+            self.hotkeyListener.ensureEnabled()
+            if !self.hotkeyListener.isListening {
                 self.checkAndConnect()
+            } else {
+                let listening = true
+                DispatchQueue.main.async {
+                    if !self.isConnected { self.isConnected = listening }
+                }
             }
         }
 
@@ -165,8 +177,9 @@ final class SudoEngine: ObservableObject {
                 self.isConnected = listening
                 if listening {
                     self.permissionStatus = "all permissions granted"
-                    self.permissionCheckTimer?.invalidate()
-                    self.permissionCheckTimer = nil
+                    // Don't invalidate the timer — we want it to keep
+                    // pulsing so we can re-enable a tap that macOS
+                    // disables under load.
                 } else {
                     self.permissionStatus = "accessibility granted but event tap failed — try restarting"
                 }
