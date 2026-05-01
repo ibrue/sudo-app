@@ -50,11 +50,19 @@ final class AutomationButtonFinder {
         // 2. Sheets of windows
         // 3. Toolbars
         // 4. Groups (1 level deep)
+        // KEY DIFFERENCE FROM THE OLD SCRIPT:
+        //   `set frontmost to true` happens *only* right before a click,
+        //   never up-front. System Events can enumerate windows / buttons
+        //   on a non-frontmost process just fine; only the click itself
+        //   needs the process to be active. Without this restructuring,
+        //   merely searching for a button across multiple processes would
+        //   activate each one in turn — e.g. Terminal would pop forward
+        //   while we were probing it for a "mute" button that doesn't
+        //   exist there.
         return """
         tell application "System Events"
             set searchTerms to {\(termsArray)}
             tell process "\(processName.replacingOccurrences(of: "\"", with: "\\\""))"
-                set frontmost to true
                 repeat with w in windows
                     -- Search buttons in window
                     repeat with b in buttons of w
@@ -62,6 +70,7 @@ final class AutomationButtonFinder {
                         if bName is not missing value then
                             repeat with t in searchTerms
                                 if bName contains t then
+                                    set frontmost to true
                                     click b
                                     return "clicked"
                                 end if
@@ -76,6 +85,7 @@ final class AutomationButtonFinder {
                                 if bName is not missing value then
                                     repeat with t in searchTerms
                                         if bName contains t then
+                                            set frontmost to true
                                             click b
                                             return "clicked"
                                         end if
@@ -92,6 +102,7 @@ final class AutomationButtonFinder {
                                 if bName is not missing value then
                                     repeat with t in searchTerms
                                         if bName contains t then
+                                            set frontmost to true
                                             click b
                                             return "clicked"
                                         end if
@@ -108,6 +119,7 @@ final class AutomationButtonFinder {
                                 if bName is not missing value then
                                     repeat with t in searchTerms
                                         if bName contains t then
+                                            set frontmost to true
                                             click b
                                             return "clicked"
                                         end if
