@@ -265,11 +265,10 @@ final class FirmwareFlasher: ObservableObject {
 # for per-button mappings; falls back to F13/F17/F18/F16 + ctrl+shift if
 # the file is missing or malformed.
 #
-# Hardware (matches sudo-supply.kicad_sch):
+# Hardware:
 #   GP0–GP3   buttons 1–4 (active-low, internal pull-up)
-#
-# Uses only built-in CircuitPython modules — no adafruit_hid, nothing to
-# install in /lib/.
+#   GP24      LED2 (under-glow)
+#   GP25      LED1 (under-glow / Pico onboard LED)
 #
 # Why F13/F17/F18/F16 instead of F13–F16 in default mode:
 #   macOS treats raw F14 / F15 as display-brightness keys on Apple-style
@@ -296,6 +295,8 @@ for _device in usb_hid.devices:
 
 # Pin map
 BUTTON_PINS = (board.GP0, board.GP1, board.GP2, board.GP3)
+LED_PIN_1 = board.GP25
+LED_PIN_2 = board.GP24
 
 
 def _make_input(pin):
@@ -305,7 +306,23 @@ def _make_input(pin):
     return p
 
 
+def _make_output(pin):
+    p = digitalio.DigitalInOut(pin)
+    p.direction = digitalio.Direction.OUTPUT
+    p.value = False
+    return p
+
+
 buttons = [_make_input(pin) for pin in BUTTON_PINS]
+
+# Plain digital LEDs — no PWM, no animation. try/except so a pin-allocation
+# hiccup can't kill the whole firmware.
+try:
+    led1 = _make_output(LED_PIN_1)
+    led2 = _make_output(LED_PIN_2)
+    _leds_ok = True
+except Exception:  # noqa: BLE001
+    _leds_ok = False
 
 
 # Config
@@ -394,6 +411,36 @@ def dispatch(idx):
             _send_consumer(usage)
 
 
+# LED feedback — non-blocking. Flash both LEDs for LED_FLASH_MS on press.
+LED_FLASH_MS = 120
+_led_off_at = 0
+
+
+def flash_leds():
+    global _led_off_at
+    if not _leds_ok:
+        return
+    try:
+        led1.value = True
+        led2.value = True
+        _led_off_at = supervisor.ticks_ms() + LED_FLASH_MS
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def update_leds():
+    global _led_off_at
+    if not _leds_ok or _led_off_at == 0:
+        return
+    try:
+        if supervisor.ticks_diff(supervisor.ticks_ms(), _led_off_at) >= 0:
+            led1.value = False
+            led2.value = False
+            _led_off_at = 0
+    except Exception:  # noqa: BLE001
+        _led_off_at = 0
+
+
 # Main loop
 DEBOUNCE_MS = 20
 last_state = [True] * 4
@@ -403,6 +450,8 @@ while True:
     try:
         now = supervisor.ticks_ms()
 
+        update_leds()
+
         for i in range(4):
             if supervisor.ticks_diff(now, debounce_until[i]) < 0:
                 continue
@@ -411,6 +460,7 @@ while True:
                 last_state[i] = state
                 debounce_until[i] = now + DEBOUNCE_MS
                 if not state:
+                    flash_leds()
                     dispatch(i)
 
         time.sleep(0.005)
