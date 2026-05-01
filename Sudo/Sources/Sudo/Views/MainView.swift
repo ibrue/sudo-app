@@ -5,6 +5,8 @@ struct MainView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
     @ObservedObject var rebuilder: DevRebuilder
+    @ObservedObject var settings: SudoSettings = .shared
+    @ObservedObject var flasher: FirmwareFlasher = .shared
     let onOpenConfig: () -> Void
 
     var body: some View {
@@ -76,11 +78,24 @@ struct MainView: View {
                 SudoDivider()
             }
 
+            // Mode selector — top-level dynamic/simple/custom
+            modeSelector
+                .padding(.horizontal, SudoTheme.spacingMd)
+                .padding(.top, 6)
+                .padding(.bottom, 8)
+
+            SudoDivider()
+
             // Device — the centerpiece
             DeviceView(engine: engine)
                 .padding(.horizontal, SudoTheme.spacingMd)
                 .padding(.vertical, 10)
                 .opacity(engine.isConnected ? 1.0 : 0.5)
+
+            // Flash row — appears when bootloader is connected, or as a hint otherwise
+            flashRow
+                .padding(.horizontal, SudoTheme.spacingMd)
+                .padding(.bottom, 8)
 
             SudoDivider()
 
@@ -229,6 +244,97 @@ struct MainView: View {
         }
         .frame(width: 320)
         .sudoBackground()
+    }
+
+    // MARK: - Mode selector
+
+    @ViewBuilder
+    private var modeSelector: some View {
+        HStack(spacing: 6) {
+            Text("mode:")
+                .font(SudoTheme.mono(size: 9))
+                .foregroundColor(SudoTheme.textMuted)
+            ForEach(AppMode.allCases, id: \.self) { mode in
+                Button(action: { settings.appMode = mode }) {
+                    Text("[\(mode.label)]")
+                        .font(SudoTheme.mono(size: 9, weight: settings.appMode == mode ? .bold : .regular))
+                        .foregroundColor(settings.appMode == mode ? SudoTheme.accent : SudoTheme.textMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("set mode to \(mode.label)")
+            }
+            Spacer()
+            Text(settings.appMode.description)
+                .font(SudoTheme.mono(size: 8))
+                .foregroundColor(SudoTheme.textMuted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    // MARK: - Flash row
+
+    @ViewBuilder
+    private var flashRow: some View {
+        HStack(spacing: 6) {
+            switch flasher.state {
+            case .idle:
+                Text("device:")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+                Text("ready")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.text)
+                Spacer()
+                Button("detect bootsel") { flasher.detectBootloader() }
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.accent)
+                    .buttonStyle(.plain)
+            case .detectingDevice:
+                Text("scanning for RPI-RP2...")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.accent)
+                Spacer()
+            case .deviceFound:
+                Text("bootsel:")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+                Text("found")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.accent)
+                Spacer()
+                Button("[ flash config ]") { flasher.flashCurrentConfig() }
+                    .font(SudoTheme.mono(size: 9, weight: .bold))
+                    .foregroundColor(SudoTheme.accent)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("flash current config to device")
+            case .flashing(let progress):
+                Text(progress)
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.accent)
+                    .lineLimit(1)
+                Spacer()
+            case .success:
+                Text("flashed ✓ — device rebooting")
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.accent)
+                Spacer()
+                Button("ok") { flasher.reset() }
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.textMuted)
+                    .buttonStyle(.plain)
+            case .error(let message):
+                Text(message)
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.error)
+                    .lineLimit(2)
+                Spacer()
+                Button("retry") { flasher.reset(); flasher.detectBootloader() }
+                    .font(SudoTheme.mono(size: 9))
+                    .foregroundColor(SudoTheme.accent)
+                    .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Permission Warning

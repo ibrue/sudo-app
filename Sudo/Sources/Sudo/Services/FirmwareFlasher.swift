@@ -130,6 +130,45 @@ final class FirmwareFlasher: ObservableObject {
         }
     }
 
+    /// Flash the user's current per-button config to the device as a generated UF2.
+    ///
+    /// Builds a config-only UF2 from `SudoSettings` and copies it to the RPI-RP2
+    /// volume. The firmware reads this region on boot and applies the mappings.
+    /// The device must already have the sudo base firmware installed.
+    func flashCurrentConfig(settings: SudoSettings = .shared) {
+        guard case .deviceFound(let path) = state else {
+            state = .error(message: "no device in bootloader mode")
+            return
+        }
+
+        state = .flashing(progress: "generating config UF2...")
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let url = try SudoConfigUF2.writeTemp(from: settings)
+
+                DispatchQueue.main.async {
+                    self?.state = .flashing(progress: "copying config to device...")
+                }
+
+                let destURL = URL(fileURLWithPath: path).appendingPathComponent("sudo-config.uf2")
+                try FileManager.default.copyItem(at: url, to: destURL)
+                Thread.sleep(forTimeInterval: 2.0)
+                try? FileManager.default.removeItem(at: url)
+
+                DispatchQueue.main.async {
+                    self?.state = .success
+                    self?.bootloaderDetected = false
+                    print("[sudo] flashed current config (\(settings.appMode.rawValue))")
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self?.state = .error(message: "config flash failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     /// Reset state
     func reset() {
         state = .idle

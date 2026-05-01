@@ -7,6 +7,10 @@ enum PadLEDState: UInt8 {
     case success        = 0x03  // flash green
     case failure        = 0x04  // flash red
     case waitingForInput = 0x05 // bright green
+    /// Brief under-glow flash on physical button press — fired by the firmware
+    /// itself for snappy feedback, but the app also pushes this on programmatic
+    /// triggers so the LEDs stay in sync with software-driven actions.
+    case buttonPressed  = 0x06
 }
 
 /// Communicates with the sudo pad hardware over USB serial to control LEDs.
