@@ -305,6 +305,19 @@ import usb_cdc
 import usb_hid
 
 
+# supervisor exposes ticks_ms() but NOT ticks_diff() in CircuitPython 9.x.
+# Roll our own wrap-safe diff (counter wraps at 2**29 ms).
+_TICKS_PERIOD = 1 << 29
+_TICKS_HALFPERIOD = _TICKS_PERIOD // 2
+
+
+def ticks_diff(t1, t2):
+    diff = (t1 - t2) & (_TICKS_PERIOD - 1)
+    if diff >= _TICKS_HALFPERIOD:
+        diff -= _TICKS_PERIOD
+    return diff
+
+
 def log(msg):
     print("[sudo] " + msg)
 
@@ -475,7 +488,7 @@ while True:
     try:
         now = supervisor.ticks_ms()
         for i in range(4):
-            if supervisor.ticks_diff(now, debounce_until[i]) < 0:
+            if ticks_diff(now, debounce_until[i]) < 0:
                 continue
             state = buttons[i].value
             if state != last_state[i]:
