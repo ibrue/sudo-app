@@ -124,6 +124,18 @@ final class SudoEngine: ObservableObject {
         }
         updateDetectedApp()
 
+        // Auto-detect the macropad. Passive scan now (so the popover shows
+        // current state at launch), and again whenever a USB volume mounts
+        // or unmounts — that's the cheapest, most reliable signal that the
+        // CIRCUITPY / RPI-RP2 drive came/went without burning a polling timer.
+        FirmwareFlasher.shared.refreshDeviceState()
+        nc.addObserver(forName: NSWorkspace.didMountNotification, object: nil, queue: .main) { _ in
+            FirmwareFlasher.shared.refreshDeviceState()
+        }
+        nc.addObserver(forName: NSWorkspace.didUnmountNotification, object: nil, queue: .main) { _ in
+            FirmwareFlasher.shared.refreshDeviceState()
+        }
+
         PluginManager.shared.loadPlugins()
         startAutoApproveTimer()
 
@@ -538,9 +550,19 @@ final class SudoEngine: ObservableObject {
             let mode = SudoSettings.shared.actionMode(for: action).rawValue
             SudoTelemetry.shared.trackButtonPress(button: action, mode: mode)
 
-            // macOS notification on failure
+            // macOS notification on failure (system-level, optional)
             if !success && SudoSettings.shared.notifyOnFailure {
                 self.sendFailureNotification(action: action, app: app)
+            }
+
+            // Always show an in-app toast on failure — the popover may be
+            // closed and the system notification may be silenced, so
+            // without this a no-match press is invisible to the user.
+            if !success {
+                ToastWindowManager.shared.showFailure(
+                    action: action.displayName,
+                    app: app
+                )
             }
 
             // Reset flash — quick for success, longer for failure

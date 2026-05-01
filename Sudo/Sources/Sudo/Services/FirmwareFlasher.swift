@@ -96,6 +96,33 @@ final class FirmwareFlasher: ObservableObject {
     /// Backwards-compatible alias for the previous bootloader-only API.
     func detectBootloader() { detectDevice() }
 
+    /// Like `detectDevice` but silent — no phase / progress churn. Called on
+    /// app launch and on every USB mount/unmount so `state` always reflects
+    /// what's actually plugged in. Skips the update if we're mid-flash so we
+    /// don't clobber an active operation.
+    func refreshDeviceState() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+            let cp = self.findCircuitPyVolume()
+            let rpi = self.findBootloaderVolume()
+            DispatchQueue.main.async {
+                switch self.state {
+                case .flashing, .detectingDevice, .success, .error:
+                    return
+                default:
+                    break
+                }
+                if let cp = cp {
+                    self.state = .readyForConfig(circuitpyPath: cp)
+                } else if let rpi = rpi {
+                    self.state = .readyForFirmware(rpiPath: rpi)
+                } else {
+                    self.state = .idle
+                }
+            }
+        }
+    }
+
     // MARK: - Public flash entry points
 
     /// Always-correct one-button flash. Picks the right path based on
