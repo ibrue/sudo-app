@@ -34,6 +34,66 @@ final class SudoConfigJSONTests: XCTestCase {
         }
     }
 
+    func testDynamicModeForcesPassthroughEvenIfButtonModesSayOtherwise() throws {
+        // Reproduces the original bug: auto-switch had momentarily set every
+        // button to mediaKey for Spotify. Pre-fix, clicking flash would
+        // write `mediaKey` into the firmware and the device would bypass
+        // the app forever after. The dynamic-mode override forces every
+        // button back to passthrough (F-keys) regardless of buttonModes.
+        let settings = SudoSettings.shared
+        let originalMode = settings.appMode
+        let originalButtonModes = settings.buttonModes
+        defer {
+            settings.appMode = originalMode
+            settings.buttonModes = originalButtonModes
+        }
+
+        settings.appMode = .dynamic
+        settings.buttonModes = [
+            "approve": "mediaKey",
+            "reject":  "mediaKey",
+            "action3": "keyCombo",
+            "action4": "mediaKey",
+        ]
+
+        let data = try SudoConfigJSON.generate(from: settings)
+        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let buttons = obj["buttons"] as! [[String: Any]]
+        for b in buttons {
+            XCTAssertEqual(b["mode"] as? String, "passthrough",
+                           "every button in dynamic mode must emit passthrough; got \(b["mode"] ?? "nil")")
+        }
+    }
+
+    func testSimpleAndCustomModesPreserveButtonModes() throws {
+        let settings = SudoSettings.shared
+        let originalMode = settings.appMode
+        let originalButtonModes = settings.buttonModes
+        defer {
+            settings.appMode = originalMode
+            settings.buttonModes = originalButtonModes
+        }
+
+        settings.buttonModes = [
+            "approve": "mediaKey",
+            "reject":  "keyCombo",
+            "action3": "keyCombo",
+            "action4": "mediaKey",
+        ]
+
+        for mode in [AppMode.simple, .custom] {
+            settings.appMode = mode
+            let data = try SudoConfigJSON.generate(from: settings)
+            let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+            let buttons = obj["buttons"] as! [[String: Any]]
+            // In non-dynamic modes, the per-button mode must reflect what
+            // the user / preset has configured.
+            let modes = buttons.compactMap { $0["mode"] as? String }
+            XCTAssertTrue(modes.contains("mediakey"),
+                          "\(mode.rawValue) mode should preserve mediaKey buttons")
+        }
+    }
+
     func testButtonsAreInPhysicalOrder() throws {
         let data = try SudoConfigJSON.generate(from: SudoSettings.shared)
         let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]

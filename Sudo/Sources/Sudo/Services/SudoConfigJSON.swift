@@ -51,11 +51,32 @@ enum SudoConfigJSON {
     // MARK: - Internal
 
     static func buttonRecord(action: PadAction, settings: SudoSettings) -> [String: Any] {
-        let mode = settings.actionMode(for: action)
+        // In dynamic mode the firmware is intentionally dumb: it always
+        // sends F13–F16 + ctrl+shift, regardless of what auto-switch has
+        // momentarily set the per-button modes to. The app's HotkeyListener
+        // catches those F-keys and dispatches per-app via the currently
+        // auto-switched preset.
+        //
+        // This is the architectural difference between the modes:
+        //   dynamic — firmware passthrough; app does per-app dispatch
+        //   simple  — firmware sends one fixed preset's keystrokes natively
+        //   custom  — firmware sends user-defined per-button keystrokes
+        //
+        // Without this override, clicking [ flash device ] while a media
+        // preset was momentarily auto-applied would write `mediaKey` into
+        // the device for ever, bypassing the app — i.e. buttons would no
+        // longer track what the menu bar shows.
+        let effectiveMode: ActionMode
+        if settings.appMode == .dynamic {
+            effectiveMode = .aiSearch
+        } else {
+            effectiveMode = settings.actionMode(for: action)
+        }
+
         let combo = settings.keyCombo(for: action)
-        let (keycode, modifiers) = hidMapping(for: action, mode: mode, combo: combo)
+        let (keycode, modifiers) = hidMapping(for: action, mode: effectiveMode, combo: combo)
         return [
-            "mode": pythonModeName(for: mode),
+            "mode": pythonModeName(for: effectiveMode),
             "keycode": Int(keycode),
             "modifiers": Int(modifiers),
             "name": settings.displayName(for: action),

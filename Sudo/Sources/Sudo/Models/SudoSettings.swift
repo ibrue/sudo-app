@@ -26,9 +26,9 @@ enum AppMode: String, CaseIterable {
 
     var description: String {
         switch self {
-        case .dynamic: return "auto-switches preset by app"
-        case .simple:  return "one fixed preset, flashable"
-        case .custom:  return "per-button manual config"
+        case .dynamic: return "device sends F-keys; app dispatches per-app"
+        case .simple:  return "one preset, hard-coded into the device"
+        case .custom:  return "your keystrokes, hard-coded into the device"
         }
     }
 }
