@@ -127,9 +127,6 @@ final class SudoEngine: ObservableObject {
         PluginManager.shared.loadPlugins()
         startAutoApproveTimer()
 
-        PadCommunicator.shared.onButtonPress = { [weak self] action in
-            self?.handleAction(action)
-        }
         PadCommunicator.shared.connect()
         PadCommunicator.shared.sendState(.idle)
 
