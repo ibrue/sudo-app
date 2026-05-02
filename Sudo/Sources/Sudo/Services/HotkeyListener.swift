@@ -1,5 +1,7 @@
 import Cocoa
 import Carbon
+import IOKit
+import IOKit.hid
 
 /// Listens for global hotkey events from any macro pad or keyboard.
 /// Key bindings are configurable — works with any firmware, not just sudo's default.
@@ -10,6 +12,15 @@ final class HotkeyListener {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var handler: ActionHandler?
+
+    /// IOHIDManager subscription used to notice when a USB HID device is
+    /// added — typically the macropad being plugged in. macOS has a
+    /// well-known wart where freshly-added HID devices don't always
+    /// route their events into existing CGEvent taps until the tap is
+    /// recreated. We rebuild the tap on every device-add as a defensive
+    /// belt; takes ~10 ms and is invisible to the user.
+    private var hidManager: IOHIDManager?
+    private var pendingRestart: DispatchWorkItem?
 
     /// Whether the tap is created AND currently enabled. macOS will disable
     /// the tap if it ever takes too long to process an event; if we only
@@ -55,7 +66,22 @@ final class HotkeyListener {
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
 
+        // Watch for new HID keyboards plugging in — see comment at the
+        // declaration of hidManager for why this matters.
+        startHIDDeviceWatcher()
+
         print("[sudo] Hotkey listener active — waiting for input")
+    }
+
+    /// Tear down then re-create the event tap. Used when macOS may have
+    /// silently stopped routing events to us — the cheapest reliable fix
+    /// is a fresh tap. Called on USB HID device add and as a manual
+    /// emergency hatch.
+    func restart() {
+        guard let h = handler else { return }
+        stopTapOnly()
+        // Reset handler since stopTapOnly clears it.
+        start(handler: h)
     }
 
     /// Temporarily disable the event tap so synthesized CGEvents aren't re-intercepted.
@@ -80,6 +106,14 @@ final class HotkeyListener {
     }
 
     func stop() {
+        stopTapOnly()
+        stopHIDDeviceWatcher()
+    }
+
+    /// Tear down the CGEvent tap but leave the HID device watcher alone
+    /// so a `restart()` can re-create the tap without blowing away its
+    /// own trigger source.
+    private func stopTapOnly() {
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -89,6 +123,61 @@ final class HotkeyListener {
         eventTap = nil
         runLoopSource = nil
         handler = nil
+        pendingRestart?.cancel()
+        pendingRestart = nil
+    }
+
+    // MARK: - HID device watcher
+
+    private func startHIDDeviceWatcher() {
+        guard hidManager == nil else { return }
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        // Match keyboard-page (0x01) usage 0x06 = keyboards.
+        let matchingDict: [String: Any] = [
+            kIOHIDDeviceUsagePageKey: 0x01,
+            kIOHIDDeviceUsageKey: 0x06,
+        ]
+        IOHIDManagerSetDeviceMatching(manager, matchingDict as CFDictionary)
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        IOHIDManagerRegisterDeviceMatchingCallback(manager, { context, _, _, _ in
+            guard let context = context else { return }
+            let listener = Unmanaged<HotkeyListener>.fromOpaque(context).takeUnretainedValue()
+            listener.scheduleTapRestart(reason: "hid keyboard added")
+        }, selfPtr)
+        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        // Open with kIOHIDOptionsTypeNone (not seize) so we don't need
+        // Input Monitoring permission. We're only consuming "device
+        // added" notifications, not the actual key events.
+        let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        if result != kIOReturnSuccess {
+            print("[sudo] IOHIDManagerOpen returned \(result) — device-add notifications may be unavailable")
+        }
+        hidManager = manager
+    }
+
+    private func stopHIDDeviceWatcher() {
+        guard let manager = hidManager else { return }
+        IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        hidManager = nil
+    }
+
+    /// Coalesce restarts — if multiple HID devices add in a burst (boot,
+    /// USB hub plug-in, sleep wake) we only want one tap rebuild.
+    private func scheduleTapRestart(reason: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.pendingRestart?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                print("[sudo] restarting event tap (\(reason))")
+                self.restart()
+            }
+            self.pendingRestart = work
+            // 250 ms debounce — long enough to coalesce a burst, short
+            // enough that the user doesn't notice the gap.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        }
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
