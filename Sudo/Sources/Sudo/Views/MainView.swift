@@ -50,6 +50,21 @@ struct MainView: View {
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundStyle(SudoTheme.accent)
 
+            Text("v\(OTAUpdater.currentVersion)")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .help("sudo \(OTAUpdater.currentVersion)")
+
+            if updater.updateAvailable {
+                Button(action: { updater.checkForUpdates() }) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(SudoTheme.accent)
+                }
+                .buttonStyle(.plain)
+                .help("update available: v\(updater.latestVersion)")
+            }
+
             Spacer()
 
             // Connection dot

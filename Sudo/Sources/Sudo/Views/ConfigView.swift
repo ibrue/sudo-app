@@ -106,94 +106,113 @@ struct ConfigView: View {
 
             SudoDivider()
 
-            // Scrollable sections — each gated on `matches(...)` so typing in
-            // the filter narrows the list. Pass extra strings for sections
-            // whose names users might search by content (e.g. "hotkeys",
-            // "webhook", "telemetry" all live under settings).
+            // Scrollable sections — grouped under category labels (hardware,
+            // buttons, automation, preferences, developer, activity). Each
+            // section is gated on `matches(...)` so typing in the filter
+            // narrows the list, and a group label only renders if at least
+            // one of its sections is visible.
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if matches("device", alsoMatching: "flash", "firmware", "circuitpython", "rp2040") {
+                    let deviceVisible = matches("device", alsoMatching: "flash", "firmware", "circuitpython", "rp2040")
+                    if deviceVisible {
+                        groupLabel("hardware")
                         section {
                             SectionHeader("device", isExpanded: sectionBinding("device"))
                             if settings.expandedSections.contains("device") { deviceContent }
                         }
                     }
 
-                    if matches("button remapping", alsoMatching: "buttons", "keys", "remap", "edit preset") {
-                        section {
-                            SectionHeader("edit preset", isExpanded: sectionBinding("remap"))
-                            if settings.expandedSections.contains("remap") { remapContent }
+                    let presetVisible = matches("button remapping", alsoMatching: "buttons", "keys", "remap", "edit preset")
+                    let macrosVisible = matches("macros")
+                    if presetVisible || macrosVisible {
+                        groupLabel("buttons")
+                        if presetVisible {
+                            section {
+                                SectionHeader("edit preset", isExpanded: sectionBinding("remap"))
+                                if settings.expandedSections.contains("remap") { remapContent }
+                            }
                         }
-                    }
-
-                    if matches("auto-switch", alsoMatching: "preset", "category") {
-                        section {
-                            SectionHeader("auto-switch", isExpanded: sectionBinding("autoswitch"),
-                                          badge: settings.autoSwitchEnabled ? "on" : nil)
-                            if settings.expandedSections.contains("autoswitch") { autoSwitchContent }
-                        }
-                    }
-
-                    if matches("macros") {
-                        section {
-                            SectionHeader("macros", isExpanded: sectionBinding("macros"), count: settings.macros.count)
-                            if settings.expandedSections.contains("macros") { macrosContent }
-                        }
-                    }
-
-                    if matches("auto-approve", alsoMatching: "rules") {
-                        section {
-                            SectionHeader("auto-approve", isExpanded: sectionBinding("autoapprove"),
-                                          badge: settings.autoApproveEnabled ? "on" : nil)
-                            if settings.expandedSections.contains("autoapprove") { autoApproveContent }
-                        }
-                    }
-
-                    if matches("settings", alsoMatching: "hotkeys", "webhook", "telemetry", "sound", "launch") {
-                        section {
-                            SectionHeader("settings", isExpanded: sectionBinding("settings"))
-                            if settings.expandedSections.contains("settings") { settingsContent }
-                        }
-                    }
-
-                    if matches("developer api", alsoMatching: "api", "mcp", "port", "key") {
-                        section {
-                            SectionHeader("developer api", isExpanded: sectionBinding("api"),
-                                          badge: apiServer.isRunning ? "on" : nil)
-                            if settings.expandedSections.contains("api") { apiContent }
-                        }
-                    }
-
-                    if matches("history", alsoMatching: "log") {
-                        section {
-                            SectionHeader("history", isExpanded: sectionBinding("history"), count: engine.actionLog.count)
-                            if settings.expandedSections.contains("history") { historyContent }
-                        }
-                    }
-
-                    if matches("debug console", alsoMatching: "logs") {
-                        section {
-                            SectionHeader("debug console", isExpanded: sectionBinding("debug"), count: debugLogger.entries.count)
-                            if settings.expandedSections.contains("debug") { debugContent }
-                        }
-                    }
-
-                    if pluginManager.loadedPlugins.count > 0, matches("plugins") {
-                        section {
-                            SectionHeader("plugins", isExpanded: .constant(true), count: pluginManager.loadedPlugins.count)
-                            ForEach(pluginManager.loadedPlugins) { plugin in
-                                Text(plugin.name.lowercased())
-                                    .font(SudoTheme.mono(size: 9))
-                                    .foregroundColor(SudoTheme.text)
+                        if macrosVisible {
+                            section {
+                                SectionHeader("macros", isExpanded: sectionBinding("macros"), count: settings.macros.count)
+                                if settings.expandedSections.contains("macros") { macrosContent }
                             }
                         }
                     }
 
-                    if settings.isDeveloperMode, matches("terminal", alsoMatching: "build", "rebuild") {
+                    let autoSwitchVisible = matches("auto-switch", alsoMatching: "preset", "category")
+                    let autoApproveVisible = matches("auto-approve", alsoMatching: "rules")
+                    if autoSwitchVisible || autoApproveVisible {
+                        groupLabel("automation")
+                        if autoSwitchVisible {
+                            section {
+                                SectionHeader("auto-switch", isExpanded: sectionBinding("autoswitch"),
+                                              badge: settings.autoSwitchEnabled ? "on" : nil)
+                                if settings.expandedSections.contains("autoswitch") { autoSwitchContent }
+                            }
+                        }
+                        if autoApproveVisible {
+                            section {
+                                SectionHeader("auto-approve", isExpanded: sectionBinding("autoapprove"),
+                                              badge: settings.autoApproveEnabled ? "on" : nil)
+                                if settings.expandedSections.contains("autoapprove") { autoApproveContent }
+                            }
+                        }
+                    }
+
+                    let prefsVisible = matches("preferences", alsoMatching: "settings", "hotkeys", "webhook", "telemetry", "sound", "launch", "debounce")
+                    if prefsVisible {
+                        groupLabel("preferences")
                         section {
-                            SectionHeader("terminal", isExpanded: sectionBinding("terminal"),
-                                          count: rebuilder.buildLog.isEmpty ? nil : rebuilder.buildLog.count)
-                            if settings.expandedSections.contains("terminal") { terminalContent }
+                            SectionHeader("preferences", isExpanded: sectionBinding("settings"))
+                            if settings.expandedSections.contains("settings") { settingsContent }
+                        }
+                    }
+
+                    let apiVisible = matches("developer api", alsoMatching: "api", "mcp", "port", "key")
+                    let pluginsVisible = pluginManager.loadedPlugins.count > 0 && matches("plugins")
+                    let debugVisible = matches("debug console", alsoMatching: "logs")
+                    let terminalVisible = settings.isDeveloperMode && matches("terminal", alsoMatching: "build", "rebuild")
+                    if apiVisible || pluginsVisible || debugVisible || terminalVisible {
+                        groupLabel("developer")
+                        if apiVisible {
+                            section {
+                                SectionHeader("developer api", isExpanded: sectionBinding("api"),
+                                              badge: apiServer.isRunning ? "on" : nil)
+                                if settings.expandedSections.contains("api") { apiContent }
+                            }
+                        }
+                        if debugVisible {
+                            section {
+                                SectionHeader("debug console", isExpanded: sectionBinding("debug"), count: debugLogger.entries.count)
+                                if settings.expandedSections.contains("debug") { debugContent }
+                            }
+                        }
+                        if pluginsVisible {
+                            section {
+                                SectionHeader("plugins", isExpanded: .constant(true), count: pluginManager.loadedPlugins.count)
+                                ForEach(pluginManager.loadedPlugins) { plugin in
+                                    Text(plugin.name.lowercased())
+                                        .font(SudoTheme.mono(size: 9))
+                                        .foregroundColor(SudoTheme.text)
+                                }
+                            }
+                        }
+                        if terminalVisible {
+                            section {
+                                SectionHeader("terminal", isExpanded: sectionBinding("terminal"),
+                                              count: rebuilder.buildLog.isEmpty ? nil : rebuilder.buildLog.count)
+                                if settings.expandedSections.contains("terminal") { terminalContent }
+                            }
+                        }
+                    }
+
+                    let historyVisible = matches("history", alsoMatching: "log")
+                    if historyVisible {
+                        groupLabel("activity")
+                        section {
+                            SectionHeader("history", isExpanded: sectionBinding("history"), count: engine.actionLog.count)
+                            if settings.expandedSections.contains("history") { historyContent }
                         }
                     }
                 }
@@ -201,26 +220,50 @@ struct ConfigView: View {
 
             SudoDivider()
 
-            // Footer
-            HStack(spacing: 8) {
-                if settings.isDeveloperMode {
-                    Button(rebuilder.isRebuilding ? rebuilder.status : "pull & rebuild") {
-                        rebuilder.rebuild()
-                    }
-                    .buttonStyle(.plain)
-                    .font(SudoTheme.mono(size: 9))
-                    .foregroundColor(rebuilder.isRebuilding ? SudoTheme.textMuted : SudoTheme.accent)
-                    .disabled(rebuilder.isRebuilding)
+            // Footer — utility buttons row, then a slim version row beneath.
+            VStack(spacing: 4) {
+                HStack(spacing: 8) {
+                    Button("updates") { updater.checkForUpdates() }
+                        .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
                     Text("·").font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.border)
+                    Button("bug?") { BugReporter.shared.fileReport(engine: engine) }
+                        .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
+                    if settings.isDeveloperMode {
+                        Text("·").font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.border)
+                        Button(rebuilder.isRebuilding ? rebuilder.status : "rebuild") {
+                            rebuilder.rebuild()
+                        }
+                        .buttonStyle(.plain)
+                        .font(SudoTheme.mono(size: 9))
+                        .foregroundColor(rebuilder.isRebuilding ? SudoTheme.textMuted : SudoTheme.accent)
+                        .disabled(rebuilder.isRebuilding)
+                    }
+                    Spacer()
+                    Button("quit") { NSApplication.shared.terminate(nil) }
+                        .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.error)
                 }
-                Button("updates") { updater.checkForUpdates() }
-                    .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
-                Text("·").font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.border)
-                Button("bug?") { BugReporter.shared.fileReport(engine: engine) }
-                    .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
-                Spacer()
-                Button("quit") { NSApplication.shared.terminate(nil) }
-                    .buttonStyle(.plain).font(SudoTheme.mono(size: 9)).foregroundColor(SudoTheme.textMuted)
+
+                HStack(spacing: 6) {
+                    Text("[sudo]")
+                        .font(SudoTheme.mono(size: 8, weight: .semibold))
+                        .foregroundColor(SudoTheme.accent)
+                    Text("v\(OTAUpdater.currentVersion)")
+                        .font(SudoTheme.mono(size: 8))
+                        .foregroundColor(SudoTheme.textMuted)
+                    if updater.updateAvailable {
+                        Text("·")
+                            .font(SudoTheme.mono(size: 8))
+                            .foregroundColor(SudoTheme.border)
+                        Button(action: { updater.checkForUpdates() }) {
+                            Text("v\(updater.latestVersion) available ↑")
+                                .font(SudoTheme.mono(size: 8, weight: .medium))
+                                .foregroundColor(SudoTheme.accent)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("install update v\(updater.latestVersion)")
+                    }
+                    Spacer()
+                }
             }
             .padding(.horizontal, SudoTheme.spacingMd)
             .padding(.vertical, 8)
@@ -239,6 +282,19 @@ struct ConfigView: View {
         .padding(.horizontal, SudoTheme.spacingMd)
         .padding(.vertical, 8)
         SudoDivider()
+    }
+
+    /// Subtle category label rendered above a group of related sections.
+    /// Mirrors the website's `> section_name` terminal-prompt style.
+    @ViewBuilder
+    private func groupLabel(_ title: String) -> some View {
+        Text("> \(title)")
+            .font(SudoTheme.mono(size: 8, weight: .medium))
+            .foregroundColor(SudoTheme.textMuted.opacity(0.7))
+            .tracking(0.5)
+            .padding(.horizontal, SudoTheme.spacingMd)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
     }
 
     // MARK: - Settings toggles + hotkeys
