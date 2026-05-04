@@ -123,11 +123,6 @@ final class SudoSettings: ObservableObject {
         FileManager.default.fileExists(atPath: NSHomeDirectory() + "/sudo-app/build.sh")
     }
 
-    /// Persisted section expansion state for ConfigView
-    @Published var expandedSections: Set<String> {
-        didSet { defaults.set(Array(expandedSections), forKey: "expandedSections") }
-    }
-
     /// Action mode per button (aiSearch, keyCombo, mediaKey)
     @Published var buttonModes: [String: String] {
         didSet { defaults.set(buttonModes, forKey: "buttonModes") }
@@ -292,7 +287,6 @@ final class SudoSettings: ObservableObject {
         }
         self.appPresetOverrides = mergedOverrides
 
-        self.expandedSections = Set(defaults.stringArray(forKey: "expandedSections") ?? [])
         self.webhookURL = defaults.string(forKey: "webhookURL") ?? ""
         self.buttonModes = (defaults.dictionary(forKey: "buttonModes") as? [String: String]) ?? [:]
         self.buttonKeyCombos = (defaults.dictionary(forKey: "buttonKeyCombos") as? [String: [String: Int]]) ?? [:]

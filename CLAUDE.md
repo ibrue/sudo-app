@@ -128,6 +128,24 @@ Build script reads version from Swift source via grep.
 
 All 17 audit issues resolved across MainView, MenuBarHelpers, TestPromptView, SudoSettings, and ConfigView.
 
+## Settings surface
+
+The settings UI splits in two:
+- **`ConfigView`** — slim popover at 320pt. Device flash status, four
+  quick toggles, automation on/off, and a CTA that opens the full window.
+- **`SettingsWindow`** — separate NSWindow (720×520, resizable) hosting
+  `NavigationSplitView` with sidebar sections for `general`, `buttons`,
+  `macros`, `auto-switch`, `auto-approve`, `developer` (dev-only),
+  `history`, and `about`. Each panel lives in
+  `Views/Settings/*Panel.swift` and uses only SwiftUI primitives so they
+  port cleanly to iOS / iPadOS later. The only macOS-specific piece is
+  `SettingsWindowManager` (NSWindow lifecycle).
+
+Open the window from the popover via the "open full settings…" card or
+the macros / history quick-link chips. `SettingsWindowManager.shared.open(
+engine:updater:rebuilder:apiServer:initialSection:)` accepts an
+`initialSection` to deep-link a specific panel.
+
 ## Common Issues
 - `CGEventFlags` requires `import CoreGraphics` in any file using it
 - `NSWorkspace` requires `import Cocoa` (not just Foundation)
