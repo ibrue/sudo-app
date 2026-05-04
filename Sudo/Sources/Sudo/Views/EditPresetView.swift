@@ -96,7 +96,7 @@ struct EditPresetView: View {
     }
 
     private var avatar: some View {
-        let tint = Color(hex: currentAction.buttonColorHex)
+        let tint = currentAction.buttonColor
         return ZStack {
             Circle()
                 .fill(tint.opacity(0.22))

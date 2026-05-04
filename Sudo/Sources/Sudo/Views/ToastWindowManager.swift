@@ -115,16 +115,16 @@ private struct ToastView: View {
         HStack(spacing: 10) {
             Image(systemName: isError ? "exclamationmark.circle.fill" : "info.circle.fill")
                 .font(.system(size: 18))
-                .foregroundStyle(isError ? Color(nsColor: .systemRed) : SudoTheme.accent)
+                .foregroundStyle(isError ? SudoTheme.error : SudoTheme.accent)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(SudoTheme.bodyEmphasized)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 if !detail.isEmpty {
                     Text(detail)
-                        .font(.system(size: 11))
+                        .font(SudoTheme.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -132,14 +132,14 @@ private struct ToastView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
                 .fill(.regularMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.18), radius: 12, y: 4)

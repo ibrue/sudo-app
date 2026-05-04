@@ -14,7 +14,7 @@ struct GeneralPanel: View {
             subtitle: "global behaviour, sound, telemetry, and hotkey bindings."
         ) {
             sectionHeader("behaviour")
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 SettingToggle(label: "search all apps", isOn: Binding(
                     get: { engine.searchAllApps }, set: { engine.searchAllApps = $0 }
                 ))
@@ -27,22 +27,23 @@ struct GeneralPanel: View {
             SudoDivider()
 
             sectionHeader("debounce")
-            HStack {
+            HStack(spacing: 12) {
                 Text("\(Int(settings.debounceDuration * 1000))ms")
-                    .font(SudoTheme.mono(size: 11))
+                    .font(SudoTheme.code(size: 13))
                     .foregroundColor(SudoTheme.text)
-                    .frame(width: 60, alignment: .leading)
+                    .monospacedDigit()
+                    .frame(width: 70, alignment: .leading)
                 Slider(
                     value: $settings.debounceDuration,
                     in: 0.01...0.5,
                     step: 0.01
                 )
                 .tint(SudoTheme.accent)
-                .frame(maxWidth: 280)
+                .frame(maxWidth: 320)
                 Button("reset") {
                     settings.debounceDuration = 0.02
                 }
-                .font(SudoTheme.mono(size: 10))
+                .font(SudoTheme.caption)
                 .foregroundColor(SudoTheme.textMuted)
                 .buttonStyle(.plain)
             }
@@ -50,34 +51,37 @@ struct GeneralPanel: View {
             SudoDivider()
 
             sectionHeader("hotkey bindings")
-            Text("the keystrokes the app listens for. F-keys are paired with ctrl+shift so they don't collide with anything you'd type.")
-                .font(SudoTheme.mono(size: 10))
+            Text("the keystrokes the app listens for. f-keys are paired with ctrl+shift so they don't collide with anything you'd type.")
+                .font(SudoTheme.caption)
                 .foregroundColor(SudoTheme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
                     let binding = settings.hotkeyBindings[action.rawValue]
                     let keyCode = binding?["keyCode"] ?? 0
                     let mods = binding?["modifiers"] ?? 0
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         Circle()
-                            .fill(Color(hex: action.buttonColorHex))
-                            .frame(width: 8, height: 8)
+                            .fill(action.buttonColor)
+                            .frame(width: 10, height: 10)
                         Text("button \(action.buttonNumber)")
-                            .font(SudoTheme.mono(size: 11))
+                            .font(SudoTheme.body)
                             .foregroundColor(SudoTheme.text)
-                            .frame(width: 80, alignment: .leading)
+                            .frame(width: 90, alignment: .leading)
                         Text(describeHotkey(keyCode: keyCode, modifiers: mods))
-                            .font(SudoTheme.mono(size: 10))
+                            .font(SudoTheme.code(size: 12))
                             .foregroundColor(SudoTheme.textMuted)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(SudoTheme.cardSurface))
                         Spacer()
                     }
                 }
             }
 
             Button("reset to defaults") { settings.resetHotkeyBindings() }
-                .font(SudoTheme.mono(size: 10))
+                .font(SudoTheme.caption)
                 .foregroundColor(SudoTheme.textMuted)
                 .buttonStyle(.plain)
                 .accessibilityLabel("reset hotkey bindings to defaults")
@@ -86,10 +90,9 @@ struct GeneralPanel: View {
 
     @ViewBuilder
     private func sectionHeader(_ title: String) -> some View {
-        Text("> \(title)")
-            .font(SudoTheme.mono(size: 10, weight: .medium))
-            .foregroundColor(SudoTheme.textMuted)
-            .tracking(0.5)
+        Text(title)
+            .font(SudoTheme.heading)
+            .foregroundColor(SudoTheme.text)
     }
 
     private func describeHotkey(keyCode: Int, modifiers: Int) -> String {

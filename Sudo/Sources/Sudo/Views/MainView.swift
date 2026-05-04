@@ -1,7 +1,6 @@
 import SwiftUI
-import Cocoa
 
-/// The slim popover. Header + 4 button cards + mode picker + footer.
+/// The popover. Header + 4 button cards + mode picker + footer.
 ///
 /// Anything heavier (flash, settings, presets, updates, bug report, quit)
 /// lives behind the gear button → ConfigView. Mode choices are just two:
@@ -26,17 +25,17 @@ struct MainView: View {
                 mcpOverlay(prompt: mcp)
             }
 
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
                     buttonCard(for: action)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
 
             footer
         }
-        .frame(width: 300)
+        .frame(width: SudoTheme.popoverWidth)
         .background(.regularMaterial)
         .animation(.easeInOut(duration: 0.2), value: engine.isConnected)
         .animation(.easeOut(duration: 0.15), value: engine.lastResult)
@@ -47,18 +46,18 @@ struct MainView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("[sudo]")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(SudoTheme.brand)
                 .foregroundStyle(SudoTheme.accent)
 
             Text("v\(OTAUpdater.currentVersion)")
-                .font(.system(size: 9, design: .monospaced))
+                .font(SudoTheme.code(size: 10))
                 .foregroundStyle(.secondary)
                 .help("sudo \(OTAUpdater.currentVersion)")
 
             if updater.updateAvailable {
                 Button(action: { updater.checkForUpdates() }) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                         .foregroundStyle(SudoTheme.accent)
                 }
                 .buttonStyle(.plain)
@@ -67,26 +66,24 @@ struct MainView: View {
 
             Spacer()
 
-            // Connection dot
             Circle()
                 .fill(engine.isConnected ? SudoTheme.accent : Color.secondary.opacity(0.4))
                 .frame(width: 6, height: 6)
                 .help(engine.isConnected ? "connected" : "no accessibility permission")
 
-            // Settings gear
             Button(action: onOpenConfig) {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(.secondary)
                     .contentShape(Rectangle())
-                    .frame(width: 22, height: 22)
+                    .frame(width: 26, height: 26)
             }
             .buttonStyle(.plain)
             .help("settings")
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
     }
 
     // MARK: - Button card
@@ -96,23 +93,26 @@ struct MainView: View {
         let last = engine.actionLog.first {
             $0.action.lowercased() == action.displayName.lowercased()
         }
-        let tint = Color(hex: action.buttonColorHex)
+        let tint = action.buttonColor
         let isLastTouched = engine.lastAction.lowercased()
             .contains(action.displayName.lowercased().components(separatedBy: " ").first ?? "")
 
         Button(action: { engine.triggerAction(action) }) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(tint.opacity(0.18))
-                        .frame(width: 18, height: 18)
+                        .fill(tint.opacity(0.35))
+                        .frame(width: 28, height: 28)
+                    Circle()
+                        .strokeBorder(tint.opacity(0.5), lineWidth: 1)
+                        .frame(width: 28, height: 28)
                     Text("\(action.buttonNumber)")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(tint.opacity(0.95))
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(tint)
                 }
 
                 Text(action.displayName)
-                    .font(.system(size: 12))
+                    .font(SudoTheme.body)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
@@ -120,28 +120,29 @@ struct MainView: View {
 
                 if let entry = last {
                     Image(systemName: entry.succeeded ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(entry.succeeded ? SudoTheme.accent : Color(nsColor: .systemRed))
+                        .font(.system(size: 11))
+                        .foregroundStyle(entry.succeeded ? SudoTheme.accent : SudoTheme.error)
                     Text(timeAgo(entry.timestamp))
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(SudoTheme.code(size: 10))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(minHeight: SudoTheme.buttonCardHeight)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
                     .fill(.thinMaterial)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
                     .strokeBorder(
-                        isLastTouched ? tint.opacity(0.45) : Color.primary.opacity(0.06),
-                        lineWidth: isLastTouched ? 1 : 0.5
+                        isLastTouched ? tint.opacity(0.6) : Color.primary.opacity(0.08),
+                        lineWidth: isLastTouched ? 1.2 : 0.5
                     )
             )
-            .shadow(color: isLastTouched ? tint.opacity(0.18) : .clear, radius: 8, y: 1)
+            .shadow(color: isLastTouched ? tint.opacity(0.20) : .clear, radius: 10, y: 1)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -161,21 +162,21 @@ struct MainView: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .frame(maxWidth: 110, alignment: .leading)
+            .frame(maxWidth: 130, alignment: .leading)
             .help(settings.appMode.description)
 
             Spacer()
 
             if let target = engine.targetAppName {
                 Text(target)
-                    .font(.system(size: 11))
+                    .font(SudoTheme.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(
             Rectangle()
                 .fill(Color.primary.opacity(0.04))
@@ -187,36 +188,32 @@ struct MainView: View {
     // MARK: - Permission banner (only when accessibility is missing)
 
     private var permissionBanner: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .font(.system(size: 12))
+                    .foregroundStyle(SudoTheme.error)
                 Text("accessibility permission required")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(SudoTheme.bodyEmphasized)
                 Spacer()
             }
             HStack {
-                Button("open settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(Color(nsColor: .systemRed))
+                Button("open settings") { URLOpener.openAccessibilitySettings() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(SudoTheme.error)
 
                 Button("re-check") { engine.checkAndConnect() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
         }
-        .padding(12)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .systemRed).opacity(0.10))
+            RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
+                .fill(SudoTheme.error.opacity(0.10))
         )
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.bottom, 8)
     }
 
@@ -224,12 +221,12 @@ struct MainView: View {
 
     @ViewBuilder
     private func mcpOverlay(prompt: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("mcp approval requested")
-                .font(.system(size: 11, weight: .semibold))
+                .font(SudoTheme.bodyEmphasized)
                 .foregroundStyle(SudoTheme.accent)
             Text(prompt)
-                .font(.system(size: 11))
+                .font(SudoTheme.body)
                 .foregroundStyle(.primary)
                 .lineLimit(3)
             HStack(spacing: 8) {
@@ -242,12 +239,12 @@ struct MainView: View {
                     .controlSize(.small)
             }
         }
-        .padding(12)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
                 .fill(.thinMaterial)
         )
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.bottom, 8)
     }
 

@@ -13,37 +13,38 @@ struct HistoryPanel: View {
         ) {
             if engine.actionLog.isEmpty {
                 Text("no actions logged yet — press a button to see it here.")
-                    .font(SudoTheme.mono(size: 11))
+                    .font(SudoTheme.body)
                     .foregroundColor(SudoTheme.textMuted)
-                    .padding(20)
+                    .padding(24)
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
                 let entries = Array(engine.actionLog.prefix(Self.pageSize))
                 Text("\(entries.count) entries")
-                    .font(SudoTheme.mono(size: 10))
+                    .font(SudoTheme.caption)
                     .foregroundColor(SudoTheme.textMuted)
+                    .monospacedDigit()
                 ForEach(entries) { entry in
-                    HStack(spacing: 10) {
-                        Text(entry.succeeded ? "✓" : "✗")
-                            .font(SudoTheme.mono(size: 11))
+                    HStack(spacing: 12) {
+                        Image(systemName: entry.succeeded ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .font(.system(size: 12))
                             .foregroundColor(entry.succeeded ? SudoTheme.accent : SudoTheme.error)
-                            .frame(width: 14)
+                            .frame(width: 16)
                         Text(entry.timeString)
-                            .font(SudoTheme.mono(size: 10))
+                            .font(SudoTheme.code(size: 11))
                             .foregroundColor(SudoTheme.textMuted)
-                            .frame(width: 70, alignment: .leading)
+                            .frame(width: 80, alignment: .leading)
                         Text(entry.action)
-                            .font(SudoTheme.mono(size: 11))
+                            .font(SudoTheme.body)
                             .foregroundColor(SudoTheme.text)
                             .lineLimit(1)
                         Spacer()
                         Text(entry.app)
-                            .font(SudoTheme.mono(size: 10))
+                            .font(SudoTheme.caption)
                             .foregroundColor(SudoTheme.textMuted)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-                    .padding(.vertical, 1)
+                    .padding(.vertical, 2)
                 }
             }
         }

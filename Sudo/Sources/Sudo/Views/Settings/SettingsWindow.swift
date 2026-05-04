@@ -4,10 +4,11 @@ import SwiftUI
 /// detail on the right — the standard macOS Preferences-style layout that
 /// also adapts cleanly to iPadOS / iOS via NavigationSplitView.
 ///
-/// Each panel is a self-contained SwiftUI view; the only thing macOS-
-/// specific in this surface is SettingsWindowManager itself. To port to
-/// iOS later, swap that for a `Sheet` or `NavigationStack` and replace
-/// `NSPasteboard` calls inside individual panels with a platform shim.
+/// Each panel is a self-contained SwiftUI view. Clipboard, URL opening,
+/// and app-lifecycle calls go through the `Services/Platform/` shim, so
+/// the only macOS-specific file in this surface is `SettingsWindowManager`
+/// (NSWindow lifecycle). To port to iOS, swap that manager for a sheet
+/// or `NavigationStack` and add the iOS branches to the platform shim.
 struct SettingsWindow: View {
 
     enum Section: String, CaseIterable, Identifiable {
@@ -66,13 +67,13 @@ struct SettingsWindow: View {
                         EmptyView()
                     } else {
                         Label(section.title, systemImage: section.systemImage)
-                            .font(SudoTheme.mono(size: 11))
+                            .font(SudoTheme.body)
                             .tag(section)
                     }
                 }
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
         } detail: {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -126,29 +127,29 @@ struct SettingsPanelScaffold<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("> \(title)")
-                    .font(SudoTheme.mono(size: 13, weight: .semibold))
-                    .foregroundColor(SudoTheme.accent)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(SudoTheme.title)
+                    .foregroundColor(SudoTheme.text)
                 if let subtitle = subtitle {
                     Text(subtitle)
-                        .font(SudoTheme.mono(size: 10))
+                        .font(SudoTheme.body)
                         .foregroundColor(SudoTheme.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
-            .padding(.bottom, 12)
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            .padding(.bottom, 14)
 
             SudoDivider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: SudoTheme.sectionSpacing) {
                     content()
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

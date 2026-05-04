@@ -18,7 +18,7 @@ struct AutoSwitchPanel: View {
 
             if let status = engine.autoSwitchStatus {
                 Text(status)
-                    .font(SudoTheme.mono(size: 10))
+                    .font(SudoTheme.caption)
                     .foregroundColor(SudoTheme.accent)
             }
 
@@ -29,7 +29,7 @@ struct AutoSwitchPanel: View {
                 Button("reset all to defaults") {
                     settings.categoryPresets = SudoSettings.defaultCategoryPresets()
                 }
-                .font(SudoTheme.mono(size: 10))
+                .font(SudoTheme.caption)
                 .foregroundColor(SudoTheme.textMuted)
                 .buttonStyle(.plain)
                 .accessibilityLabel("reset category presets to defaults")
@@ -37,26 +37,26 @@ struct AutoSwitchPanel: View {
                 SudoDivider()
                 sectionHeader("per-app overrides")
                 Text("overrides take priority over the category mapping above.")
-                    .font(SudoTheme.mono(size: 10))
+                    .font(SudoTheme.caption)
                     .foregroundColor(SudoTheme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if settings.appPresetOverrides.isEmpty {
                     Text("no overrides yet.")
-                        .font(SudoTheme.mono(size: 10))
+                        .font(SudoTheme.body)
                         .foregroundColor(SudoTheme.textMuted)
                 } else {
                     ForEach(Array(settings.appPresetOverrides.keys.sorted()), id: \.self) { bundleID in
                         let presetID = settings.appPresetOverrides[bundleID] ?? ""
                         let name = ButtonPreset.all.first(where: { $0.id == presetID })?.name.lowercased() ?? presetID
                         let shortName = bundleID.split(separator: ".").last.map(String.init)?.lowercased() ?? bundleID
-                        HStack(spacing: 8) {
-                            Text(shortName).font(SudoTheme.mono(size: 11)).foregroundColor(SudoTheme.text)
-                            Text("→").font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.border)
-                            Text(name).font(SudoTheme.mono(size: 11)).foregroundColor(SudoTheme.textMuted)
+                        HStack(spacing: 10) {
+                            Text(shortName).font(SudoTheme.body).foregroundColor(SudoTheme.text)
+                            Text("→").font(SudoTheme.caption).foregroundColor(SudoTheme.border)
+                            Text(name).font(SudoTheme.body).foregroundColor(SudoTheme.textMuted)
                             Spacer()
                             Button("remove") { settings.appPresetOverrides.removeValue(forKey: bundleID) }
-                                .font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                                .font(SudoTheme.caption).foregroundColor(SudoTheme.error).buttonStyle(.plain)
                         }
                     }
                 }
@@ -68,7 +68,7 @@ struct AutoSwitchPanel: View {
                             settings.appPresetOverrides[bid] = lastPreset
                         }
                     }
-                    .font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                    .font(SudoTheme.caption).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                 }
             }
         }
@@ -76,22 +76,22 @@ struct AutoSwitchPanel: View {
 
     @ViewBuilder
     private var categoryTable: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             ForEach(AppCategory.allCases.filter { $0 != .unknown }, id: \.rawValue) { category in
                 let presetID = settings.categoryPresets[category.rawValue]
                 let isActive = engine.currentCategory == category
                 let currentPresetName = ButtonPreset.all.first(where: { $0.id == presetID })?.name.lowercased() ?? "none"
 
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     Text(isActive ? "●" : "○")
-                        .font(SudoTheme.mono(size: 9))
+                        .font(SudoTheme.code(size: 11))
                         .foregroundColor(isActive ? SudoTheme.accent : SudoTheme.border)
-                        .frame(width: 12)
+                        .frame(width: 14)
                     Text(category.displayName)
-                        .font(SudoTheme.mono(size: 11))
+                        .font(SudoTheme.body)
                         .foregroundColor(isActive ? SudoTheme.text : SudoTheme.textMuted)
-                        .frame(width: 140, alignment: .leading)
-                    Text("→").font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.border)
+                        .frame(width: 160, alignment: .leading)
+                    Text("→").font(SudoTheme.caption).foregroundColor(SudoTheme.border)
                     Menu {
                         ForEach(ButtonPreset.all) { preset in
                             Button(preset.name.lowercased()) {
@@ -101,10 +101,12 @@ struct AutoSwitchPanel: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text(currentPresetName)
-                                .font(SudoTheme.mono(size: 10))
+                                .font(SudoTheme.body)
                                 .foregroundColor(SudoTheme.text)
                                 .lineLimit(1)
-                            Text("▾").font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.accent)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(SudoTheme.accent)
                         }
                     }
                     .menuStyle(.borderlessButton)
@@ -118,9 +120,8 @@ struct AutoSwitchPanel: View {
 
     @ViewBuilder
     private func sectionHeader(_ title: String) -> some View {
-        Text("> \(title)")
-            .font(SudoTheme.mono(size: 10, weight: .medium))
-            .foregroundColor(SudoTheme.textMuted)
-            .tracking(0.5)
+        Text(title)
+            .font(SudoTheme.heading)
+            .foregroundColor(SudoTheme.text)
     }
 }

@@ -28,13 +28,13 @@ final class SettingsWindowManager {
             return
         }
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         w.title = "sudo settings"
-        w.minSize = NSSize(width: 620, height: 420)
+        w.minSize = NSSize(width: 680, height: 460)
         w.isReleasedWhenClosed = false
         w.contentView = NSHostingView(rootView: SettingsWindow(
             engine: engine,

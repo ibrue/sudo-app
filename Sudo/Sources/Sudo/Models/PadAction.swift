@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import AppKit
 
 /// Maps each macro pad button to a semantic action
 enum PadAction: String, CaseIterable {
@@ -94,14 +96,26 @@ enum PadAction: String, CaseIterable {
         }
     }
 
-    /// Physical button color on the sudo pad (bottom to top: green, red, yellow, black)
-    var buttonColorHex: UInt32 {
+    /// Physical button color on the sudo pad (bottom to top: green,
+    /// yellow, red, black). Each pair is `(light, dark)` — the dark
+    /// variant only exists because button 4 (#2A2A2A) is invisible on
+    /// the translucent dark popover. Lifting it to ~#9A9A9A in dark
+    /// mode is the cleanest fix; the other three get small bumps for
+    /// consistency so they pop the same amount in both appearances.
+    var buttonColor: Color {
         switch self {
-        case .approve: return 0x6ABF73  // green
-        case .reject:  return 0xC85C5C  // red
-        case .action3: return 0xD4B85C  // yellow
-        case .action4: return 0x2A2A2A  // black/dark
+        case .approve: return Self.dynamic(light: 0x6ABF73, dark: 0x6FC97D)
+        case .action3: return Self.dynamic(light: 0xD4B85C, dark: 0xE0C76B)
+        case .reject:  return Self.dynamic(light: 0xC85C5C, dark: 0xD66B6B)
+        case .action4: return Self.dynamic(light: 0x2A2A2A, dark: 0x9A9A9A)
         }
+    }
+
+    private static func dynamic(light: UInt32, dark: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil
+            return NSColor(hex: isDark ? dark : light)
+        })
     }
 
     /// Physical order on the pad (0 = bottom, 3 = top)

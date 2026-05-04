@@ -1,9 +1,8 @@
 import SwiftUI
-import Cocoa
 
 /// First-launch walkthrough. Each step auto-checks its own completion
 /// condition off engine + flasher state — no "click next when done."
-/// Matches the v1.4 popover aesthetic: SF Pro body, glass cards, native
+/// Matches the v1.6 popover aesthetic: system body, glass cards, native
 /// macOS controls. The [sudo] mark is the only mono element.
 struct OnboardingView: View {
     @ObservedObject var engine: SudoEngine
@@ -57,19 +56,19 @@ struct OnboardingView: View {
             header
 
             Text("welcome — let's get you set up.")
-                .font(.system(size: 12))
+                .font(SudoTheme.body)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 ForEach(Step.allCases, id: \.rawValue) { step in
                     stepRow(step)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 14)
 
             HStack {
                 Spacer()
@@ -82,27 +81,27 @@ struct OnboardingView: View {
                 .disabled(!allComplete)
                 Spacer()
             }
-            .padding(.vertical, 14)
+            .padding(.vertical, 16)
         }
-        .frame(width: 320)
+        .frame(width: SudoTheme.popoverWidth)
         .background(.regularMaterial)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
             Text("[sudo]")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(SudoTheme.brand)
                 .foregroundStyle(SudoTheme.accent)
 
             Spacer()
 
             Button("skip") { dismiss() }
                 .buttonStyle(.plain)
-                .font(.system(size: 11))
+                .font(SudoTheme.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
         .padding(.bottom, 6)
     }
 
@@ -114,30 +113,29 @@ struct OnboardingView: View {
     @ViewBuilder
     private func stepRow(_ step: Step) -> some View {
         let done = isComplete(step)
-        HStack(alignment: .top, spacing: 10) {
-            // Status badge (number when pending, checkmark when done)
+        HStack(alignment: .top, spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(done ? SudoTheme.accent.opacity(0.18) : Color.primary.opacity(0.06))
-                    .frame(width: 22, height: 22)
+                    .fill(done ? SudoTheme.accent.opacity(0.20) : Color.primary.opacity(0.06))
+                    .frame(width: 26, height: 26)
                 if done {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(SudoTheme.accent)
                 } else {
                     Text("\(step.rawValue + 1)")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(step.title)
-                    .font(.system(size: 12, weight: done ? .regular : .semibold))
+                    .font(done ? SudoTheme.body : SudoTheme.bodyEmphasized)
                     .foregroundStyle(done ? .secondary : .primary)
                     .strikethrough(done, color: .secondary)
                 Text(step.hint)
-                    .font(.system(size: 11))
+                    .font(SudoTheme.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -146,14 +144,14 @@ struct OnboardingView: View {
 
             actionButton(for: step, done: done)
         }
-        .padding(10)
+        .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
                 .fill(.thinMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
     }
 
@@ -162,13 +160,9 @@ struct OnboardingView: View {
         if done { EmptyView() } else {
             switch step {
             case .accessibility:
-                Button("open settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                Button("open settings") { URLOpener.openAccessibilitySettings() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             case .plugIn:
                 Button("scan") { flasher.detectDevice() }
                     .buttonStyle(.bordered)

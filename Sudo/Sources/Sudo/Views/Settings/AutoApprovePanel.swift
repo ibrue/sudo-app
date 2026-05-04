@@ -29,7 +29,7 @@ struct AutoApprovePanel: View {
             sectionHeader("rules")
             if settings.autoApproveRules.isEmpty {
                 Text("no rules yet — add one below to enable safe auto-approval in specific apps.")
-                    .font(SudoTheme.mono(size: 10))
+                    .font(SudoTheme.body)
                     .foregroundColor(SudoTheme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -40,7 +40,7 @@ struct AutoApprovePanel: View {
 
             Button(action: addRule) {
                 Label("add rule", systemImage: "plus.circle")
-                    .font(SudoTheme.mono(size: 11, weight: .medium))
+                    .font(SudoTheme.bodyEmphasized)
                     .foregroundColor(SudoTheme.accent)
             }
             .buttonStyle(.plain)
@@ -50,23 +50,23 @@ struct AutoApprovePanel: View {
     }
 
     private var warningBanner: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 11))
+                .font(.system(size: 13))
                 .foregroundStyle(SudoTheme.error)
             Text("rules fire approve presses without confirmation. always set a context-excludes guard for destructive prompts.")
-                .font(SudoTheme.mono(size: 10))
+                .font(SudoTheme.body)
                 .foregroundColor(SudoTheme.error)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(SudoTheme.error.opacity(0.1)))
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius).fill(SudoTheme.error.opacity(0.10)))
     }
 
     @ViewBuilder
     private func ruleCard(index: Int, rule: AutoApproveRule) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 SettingToggle(label: rule.name.lowercased(), isOn: Binding(
                     get: { settings.autoApproveRules[index].enabled },
@@ -75,7 +75,7 @@ struct AutoApprovePanel: View {
                 Spacer()
                 if editingRuleID == rule.id {
                     Button("done") { editingRuleID = nil }
-                        .font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                        .font(SudoTheme.caption).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                 } else {
                     Button("edit") {
                         editingRuleID = rule.id
@@ -84,14 +84,14 @@ struct AutoApprovePanel: View {
                         editRuleContextContains = rule.contextContains ?? ""
                         editRuleContextExcludes = rule.contextExcludes ?? ""
                     }
-                    .font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+                    .font(SudoTheme.caption).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
                     Button("delete") { settings.autoApproveRules.remove(at: index) }
-                        .font(SudoTheme.mono(size: 10)).foregroundColor(SudoTheme.error).buttonStyle(.plain)
+                        .font(SudoTheme.caption).foregroundColor(SudoTheme.error).buttonStyle(.plain)
                 }
             }
 
             if editingRuleID == rule.id {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     field("name", text: Binding(
                         get: { editRuleName },
                         set: { editRuleName = $0; settings.autoApproveRules[index].name = $0 }
@@ -109,27 +109,24 @@ struct AutoApprovePanel: View {
                         set: { editRuleContextExcludes = $0; settings.autoApproveRules[index].contextExcludes = $0.isEmpty ? nil : $0 }
                     ), hint: "never fire if context has this text")
                 }
-                .padding(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
+                .padding(10)
+                .overlay(RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
             }
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.thinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius).fill(SudoTheme.cardSurface))
     }
 
     @ViewBuilder
     private func field(_ label: String, text: Binding<String>, hint: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Text(label)
-                .font(SudoTheme.mono(size: 10))
+                .font(SudoTheme.caption)
                 .foregroundColor(SudoTheme.textMuted)
-                .frame(width: 70, alignment: .trailing)
+                .frame(width: 80, alignment: .trailing)
             TextField(hint, text: text)
-                .font(SudoTheme.mono(size: 11))
-                .textFieldStyle(.plain)
-                .padding(4)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
+                .textFieldStyle(.roundedBorder)
+                .font(SudoTheme.body)
         }
     }
 
@@ -145,9 +142,8 @@ struct AutoApprovePanel: View {
 
     @ViewBuilder
     private func sectionHeader(_ title: String) -> some View {
-        Text("> \(title)")
-            .font(SudoTheme.mono(size: 10, weight: .medium))
-            .foregroundColor(SudoTheme.textMuted)
-            .tracking(0.5)
+        Text(title)
+            .font(SudoTheme.heading)
+            .foregroundColor(SudoTheme.text)
     }
 }
