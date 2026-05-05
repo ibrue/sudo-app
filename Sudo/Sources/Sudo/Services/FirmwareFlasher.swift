@@ -1,4 +1,6 @@
 import Foundation
+import IOKit
+import IOKit.hid
 
 /// Detects the sudo macropad and writes its firmware/config.
 ///
@@ -44,6 +46,17 @@ final class FirmwareFlasher: ObservableObject {
     @Published var phase: String = ""
     @Published var progress: Double = 0
     @Published var step: FlashStep = .reboot
+
+    /// True when an Adafruit USB HID device is currently attached. Set
+    /// by an IOKit matching subscription, so it tracks plug/unplug
+    /// without needing the CIRCUITPY mass-storage volume — which boot.py
+    /// hides in normal use, leaving `state == .idle` even though the
+    /// pad is fully functional. Used to drive the device label so the
+    /// popover shows "connected" instead of a misleading "idle" once
+    /// the pad is plugged in.
+    @Published var hidConnected: Bool = false
+
+    private var hidWatcher: IOHIDManager?
 
     /// Pinned CircuitPython release for the Raspberry Pi Pico (RP2040). We
     /// don't track latest because Adafruit releases occasionally rename
@@ -145,6 +158,62 @@ final class FirmwareFlasher: ObservableObject {
             self.progress = 0
             self.step = .reboot
         }
+    }
+
+    // MARK: - HID hot-plug detection
+    //
+    // Subscribes to IOKit for any USB device with the Adafruit vendor
+    // ID (0x239A — covers every CircuitPython-based board, which on a
+    // user's Mac is the sudo pad). When one shows up or disappears we
+    // flip `hidConnected`; the device label reads that to show
+    // "connected (running)" while the CIRCUITPY drive is hidden.
+    //
+    // Why we don't piggyback on `HotkeyListener`'s existing watcher:
+    // that one matches *any* keyboard so it can rebuild the event tap
+    // when the user adds a new keyboard of any kind. We need a stricter
+    // filter for "is the sudo pad here", so it lives separately.
+
+    private static let adafruitVendorID: Int = 0x239A
+
+    func startHIDDetection() {
+        guard hidWatcher == nil else { return }
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        let matchingDict: [String: Any] = [
+            kIOHIDVendorIDKey: Self.adafruitVendorID,
+        ]
+        IOHIDManagerSetDeviceMatching(manager, matchingDict as CFDictionary)
+
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        IOHIDManagerRegisterDeviceMatchingCallback(manager, { ctx, _, _, _ in
+            guard let ctx = ctx else { return }
+            let me = Unmanaged<FirmwareFlasher>.fromOpaque(ctx).takeUnretainedValue()
+            DispatchQueue.main.async { me.hidConnected = true }
+        }, context)
+        IOHIDManagerRegisterDeviceRemovalCallback(manager, { ctx, _, _, _ in
+            guard let ctx = ctx else { return }
+            let me = Unmanaged<FirmwareFlasher>.fromOpaque(ctx).takeUnretainedValue()
+            DispatchQueue.main.async { me.refreshHIDState() }
+        }, context)
+
+        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        if result != kIOReturnSuccess {
+            print("[sudo] FirmwareFlasher.startHIDDetection: IOHIDManagerOpen returned \(result)")
+        }
+        // The matching callback fires synchronously for any already-
+        // attached devices, so `hidConnected` is correct after Open
+        // returns. No initial scan needed.
+        self.hidWatcher = manager
+    }
+
+    /// Re-walks the matched device set after a removal to decide whether
+    /// any sudo-pad-shaped device is still attached. The removal callback
+    /// fires for the device that left; we have to poll the manager to
+    /// know whether anything matching the same filter remains.
+    private func refreshHIDState() {
+        guard let manager = hidWatcher else { return }
+        let attached = (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>) ?? []
+        hidConnected = !attached.isEmpty
     }
 
     // MARK: - Implementation
@@ -707,10 +776,16 @@ extension FirmwareFlasher {
         case .error(let msg):
             return .init(label: "device: error — \(msg)", colour: Color(nsColor: .systemRed))
         case .idle:
-            // After v1.5.3 the firmware hides the CIRCUITPY drive in normal
-            // use; "not detected" usually means "device is plugged in but
-            // running normally" rather than "no device at all."
-            return .init(label: "device: idle (hold button 1 + replug to flash)",
+            // After v1.5.3 boot.py hides the CIRCUITPY drive in normal
+            // use, so the volume-mount notification never fires when the
+            // pad is just running. The IOKit HID watcher gives us a
+            // reliable "is the pad here" signal that doesn't depend on
+            // the mass-storage drive being visible.
+            if hidConnected {
+                return .init(label: "device: connected (running)",
+                             colour: SudoTheme.accent)
+            }
+            return .init(label: "device: not detected (hold button 1 + replug to flash)",
                          colour: Color(nsColor: .separatorColor))
         }
     }

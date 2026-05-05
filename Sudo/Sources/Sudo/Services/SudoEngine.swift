@@ -141,6 +141,11 @@ final class SudoEngine: ObservableObject {
         // or unmounts — that's the cheapest, most reliable signal that the
         // CIRCUITPY / RPI-RP2 drive came/went without burning a polling timer.
         FirmwareFlasher.shared.refreshDeviceState()
+        // IOKit HID hot-plug watcher: complements the volume-based
+        // detection above. Boot.py hides CIRCUITPY in normal use, so
+        // the mount notification never fires for a working pad — but
+        // the pad still enumerates as a HID keyboard, which IOKit sees.
+        FirmwareFlasher.shared.startHIDDetection()
         nc.addObserver(forName: NSWorkspace.didMountNotification, object: nil, queue: .main) { _ in
             FirmwareFlasher.shared.refreshDeviceState()
         }

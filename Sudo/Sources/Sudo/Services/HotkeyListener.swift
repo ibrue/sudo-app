@@ -174,9 +174,12 @@ final class HotkeyListener {
                 self.restart()
             }
             self.pendingRestart = work
-            // 250 ms debounce — long enough to coalesce a burst, short
-            // enough that the user doesn't notice the gap.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+            // 50 ms debounce — short enough that the user doesn't feel a
+            // gap on first press after plug-in, long enough to coalesce
+            // the few-ms gap between IOKit's separate HID-collection adds
+            // (keyboard + consumer control fire back-to-back). Was 250 ms;
+            // dropped because for a single-pad plug-in 250 ms was visible.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
         }
     }
 
