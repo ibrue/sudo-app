@@ -238,25 +238,43 @@ final class FirmwareFlasher: ObservableObject {
     /// only re-exposes the drive when the user holds button 1 while
     /// plugging in. Pure HID otherwise.
     private func writeConfigToCircuitPy(path: String, settings: SudoSettings) {
-        beginFlashing(label: "writing boot.py, code.py, config.json…", at: .write)
+        beginFlashing(label: "writing firmware…", at: .write)
         do {
+            let metaDst = URL(fileURLWithPath: path).appendingPathComponent(".metadata_never_index")
             let bootDst = URL(fileURLWithPath: path).appendingPathComponent("boot.py")
             let codeDst = URL(fileURLWithPath: path).appendingPathComponent("code.py")
             let configDst = URL(fileURLWithPath: path).appendingPathComponent("config.json")
             let configData = try SudoConfigJSON.generate(from: settings)
 
-            updateProgress(0.15, phase: "writing boot.py (hot-plug guard)…")
+            // Spotlight indexing CIRCUITPY was the culprit behind the
+            // "pad takes minutes to connect" reports: macOS would
+            // write `.Spotlight-V100/`, `.fseventsd/`, `.Trashes/`
+            // metadata, every write would trigger CircuitPython's
+            // auto-reload, and the pad would ping-pong through boot.py
+            // for 1–2 minutes before settling. Dropping a
+            // `.metadata_never_index` file (zero-byte, recognised by
+            // Spotlight) tells macOS to skip this volume entirely.
+            // Write it FIRST so it's in place before macOS has a
+            // chance to start scanning the volume metadata we add.
+            updateProgress(0.05, phase: "tagging volume to skip Spotlight…")
+            try Data().write(to: metaDst, options: .atomic)
+
+            updateProgress(0.20, phase: "writing boot.py (hot-plug guard)…")
             try Self.embeddedBootPy.write(to: bootDst, atomically: true, encoding: .utf8)
-            updateProgress(0.45, phase: "writing code.py…")
+            updateProgress(0.50, phase: "writing code.py…")
             try Self.embeddedCodePy.write(to: codeDst, atomically: true, encoding: .utf8)
-            updateProgress(0.75, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
+            updateProgress(0.80, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
             try writeOverwriting(data: configData, to: configDst)
 
             DispatchQueue.main.async { self.step = .verify }
-            updateProgress(0.9, phase: "waiting for CircuitPython auto-reload…")
-            Thread.sleep(forTimeInterval: 0.6)
+            // The new boot.py disables auto-reload, so we don't wait
+            // for CircuitPython to pick the files up — the user
+            // unplugs/replugs and the new firmware runs cleanly from
+            // a fresh boot. Quick settle to let the FAT writes flush.
+            updateProgress(0.95, phase: "settling…")
+            Thread.sleep(forTimeInterval: 0.3)
 
-            finishSuccess(label: "flashed — drive will be hidden on next plug-in (hold button 1 to re-flash)")
+            finishSuccess(label: "flashed — unplug + replug to start (hold button 1 again to re-flash)")
         } catch {
             setError("config write failed: \(error.localizedDescription)")
         }
