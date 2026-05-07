@@ -444,6 +444,13 @@ final class SudoEngine: ObservableObject {
         // the press registered, before any pipeline work runs.
         PadCommunicator.shared.sendState(.buttonPressed)
 
+        // Log every accepted action so the Debug Console shows the
+        // full chain (pad input → action triggered → result). Without
+        // this the only entries were debounces and macro starts, so
+        // a normal press would look like nothing was happening.
+        let frontmostName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "system"
+        log.log("trigger: button \(action.buttonNumber) (\(action.displayName)) in \(frontmostName)")
+
         // Check if this button has a macro assigned
         if !executingMacro, let macro = SudoSettings.shared.macros.first(where: { $0.assignedButton == action.rawValue }) {
             log.log("running macro: \(macro.name)")

@@ -180,6 +180,10 @@ struct DeveloperPanel: View {
     @ViewBuilder
     private var debugSection: some View {
         sectionHeader("debug console")
+        Text("sudo's view of every button press, action, and detection-pipeline result. when this is empty after a press, the event tap isn't catching the keystroke — usually accessibility permission.")
+            .font(SudoTheme.caption)
+            .foregroundColor(SudoTheme.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
         if debugLogger.entries.isEmpty {
             Text("no logs yet — press a button.")
                 .font(SudoTheme.body).foregroundColor(SudoTheme.textMuted)
@@ -239,7 +243,11 @@ struct DeveloperPanel: View {
 
     @ViewBuilder
     private var terminalSection: some View {
-        sectionHeader("terminal")
+        sectionHeader("build & rebuild terminal")
+        Text("output from the local build script (`./build.sh`) and the `pull & rebuild` button below. not for live macropad input — that's debug console above.")
+            .font(SudoTheme.caption)
+            .foregroundColor(SudoTheme.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
