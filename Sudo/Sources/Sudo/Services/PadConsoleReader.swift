@@ -81,10 +81,8 @@ final class PadConsoleReader: ObservableObject {
     func stop() {
         readSource?.cancel()
         readSource = nil
-        DispatchQueue.main.async {
-            self.isConnected = false
-            self.portPath = nil
-            self.append(line: "── disconnected ──")
+        DispatchQueue.main.async { [weak self] in
+            self?.handleDisconnect(reason: nil)
         }
     }
 
@@ -132,11 +130,21 @@ final class PadConsoleReader: ObservableObject {
         }
         if n <= 0 {
             if errno == EAGAIN || errno == EWOULDBLOCK { return }
-            // Pad probably disconnected. Tear down so the user can
-            // hit reconnect once they replug.
-            DispatchQueue.main.async {
-                self.lastError = "pad disconnected"
-                self.stop()
+            // Cancel the source synchronously on the read queue so the
+            // dispatch source stops firing immediately. If we instead
+            // dispatched the cancel to main and waited for it, the
+            // source can fire its read handler hundreds of times in
+            // the meantime — a TTY at EOF is perpetually "readable"
+            // until the source is cancelled — and each firing would
+            // schedule another disconnect notification. That's how
+            // the popover ended up with thousands of "── disconnected
+            // ──" lines on a single unplug.
+            if let src = readSource {
+                src.cancel()
+                readSource = nil
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.handleDisconnect(reason: "pad disconnected")
             }
             return
         }
@@ -159,5 +167,23 @@ final class PadConsoleReader: ObservableObject {
         if lines.count > Self.maxLines {
             lines.removeFirst(lines.count - Self.maxLines)
         }
+    }
+
+    /// Idempotent shutdown — both the user-driven `stop()` path and the
+    /// EOF path in `readAvailable` route through here. The `isConnected`
+    /// guard means a second call (e.g. duplicate disconnect events from
+    /// a source that fired once before its cancel took effect) is a
+    /// no-op rather than appending another marker.
+    private func handleDisconnect(reason: String?) {
+        guard isConnected else { return }
+        isConnected = false
+        portPath = nil
+        if let reason = reason { lastError = reason }
+        // fd is closed by the dispatch source's cancel handler — it
+        // runs on the source's queue, so closing it from main here
+        // would race against background reads. Leave it to the cancel
+        // path (the cancel was already issued before this main-queue
+        // hop, in either stop() or readAvailable's EOF branch).
+        append(line: "── disconnected ──")
     }
 }
