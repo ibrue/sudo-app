@@ -129,14 +129,50 @@
 - Pre-built firmware profiles for each preset (default, shortcuts, media, browsing, discord, custom)
 - UF2 files looked up in: bundle resources → ~/Library/Application Support/Sudo/Firmware/
 
-## Build
+## Build + test workflow
+
+The user tests changes by pulling main and rebuilding locally — this
+project doesn't have a CI pipeline that ships pre-built artifacts.
+The standard loop after pushing a change:
+
 ```bash
-./build.sh                    # builds to dist/Sudo.app
+git pull origin main
+./build.sh                                    # builds to dist/Sudo.app
+killall Sudo 2>/dev/null || true              # otherwise the running copy holds the binary
 rm -rf /Applications/Sudo.app
 cp -r dist/Sudo.app /Applications/
+open /Applications/Sudo.app
 ```
+
+**Accessibility permission gets revoked on every build.** `build.sh`
+runs `tccutil reset Accessibility supply.sudo.app` on line 109 so
+macOS treats the new binary as a fresh app, which is the right
+default for unsigned local builds — but the user has to re-grant
+Accessibility in System Settings → Privacy & Security → Accessibility
+each time. The popover shows a red banner with an "open settings"
+button when permission is missing. After granting, the in-app
+permission timer (every 3 s) picks it up; if it doesn't, click
+"re-check" in the banner.
+
+Use `AXIsProcessTrustedWithOptions(_:)` (not plain `AXIsProcessTrusted()`)
+when checking — the plain call can return a stale "false" for the
+lifetime of the process after `tccutil reset`. See `SudoEngine.checkAndConnect`.
+
 Version is read from `OTAUpdater.currentVersion` (single source of truth).
 Build script reads version from Swift source via grep.
+
+### Firmware test loop (on the macropad itself)
+
+The pad runs CircuitPython firmware in `sudo-supply/hardware/firmware/`.
+Re-flashing requires the user to:
+
+1. Hold button 1 + plug in the pad → CIRCUITPY drive mounts.
+2. Open the popover → Settings → Device → Flash.
+3. Unplug + replug (no button held) → new code.py runs.
+
+Diagnostic console: dev mode → Settings → Developer → "pad console"
+section tails `/dev/cu.usbmodem*`. Click connect, replug pad, copy
+the boot log out. Useful for "pad takes ages to connect" reports.
 
 ## UI Audits
 

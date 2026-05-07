@@ -164,7 +164,18 @@ final class SudoEngine: ObservableObject {
 
     /// Check permissions and (re)start the hotkey listener if possible
     func checkAndConnect() {
-        let axTrusted = AXIsProcessTrusted()
+        // Use AXIsProcessTrustedWithOptions instead of plain
+        // AXIsProcessTrusted: the latter can return a stale "false"
+        // for the lifetime of the process after `tccutil reset`
+        // (which build.sh runs on every rebuild) even after the user
+        // re-grants Accessibility in System Settings. Passing the
+        // prompt option as `false` skips the prompt UI but still
+        // forces the trust cache to refresh, which is the bit that
+        // matters here. The cache miss was the likely cause behind
+        // "I toggled accessibility on and the app still won't connect".
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
+        let axTrusted = AXIsProcessTrustedWithOptions(options)
+        DebugLogger.shared.log("permission check: ax=\(axTrusted), tap=\(hotkeyListener.isListening)")
 
         DispatchQueue.main.async {
             self.axPermissionGranted = axTrusted
