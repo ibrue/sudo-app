@@ -348,7 +348,14 @@ final class SudoSettings: ObservableObject {
     }
 
     static func defaultMacros() -> [MacroSequence] {
-        [
+        // CGEvent virtual keycodes: 21 = "4", 11 = "B".
+        // CGEventFlags raw values: maskCommand = 1 << 20, maskShift = 1 << 17,
+        // maskAlternate = 1 << 19. We hardcode the integers here so the
+        // default macros don't drag CoreGraphics into the model layer.
+        let cmdShift = 0x100000 | 0x20000   // ⌘⇧
+        let optShift = 0x80000 | 0x20000    // ⌥⇧
+
+        return [
             MacroSequence(name: "double approve", steps: [
                 MacroStep(action: .approve, delayAfter: 1.5),
                 MacroStep(action: .approve, delayAfter: 0),
@@ -357,6 +364,23 @@ final class SudoSettings: ObservableObject {
                 MacroStep(action: .approve, delayAfter: 1.0),
                 MacroStep(action: .approve, delayAfter: 1.0),
                 MacroStep(action: .approve, delayAfter: 0),
+            ]),
+            // Screenshot — single global keystroke. Cmd+Shift+4 invokes
+            // the macOS area-selection screenshot tool (saves to Desktop
+            // by default; user can change in System Settings → Screenshots).
+            MacroSequence(name: "screenshot", steps: [
+                .keystroke(keyCode: 21, modifiers: cmdShift),
+            ]),
+            // Spotify like song — demo of the scoped-macro feature.
+            // Switches to Spotify, sends Option+Shift+B (the default
+            // "save to liked songs" shortcut), switches back to whatever
+            // the user was doing before. Long-running songs sometimes
+            // need a beat after the keystroke before the UI reflects
+            // the like, hence the small delayAfter.
+            MacroSequence(name: "like song in spotify", steps: [
+                .switchToApp(bundleID: "com.spotify.client", displayName: "Spotify"),
+                .keystroke(keyCode: 11, modifiers: optShift, delayAfter: 0.1),
+                .switchBack(),
             ]),
         ]
     }

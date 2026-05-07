@@ -334,17 +334,89 @@ final class SudoEngine: ObservableObject {
         }
     }
 
-    /// Execute a macro sequence (chained actions with delays)
+    /// Execute a macro sequence (chained actions / app switches / keystrokes).
+    ///
+    /// Captures the frontmost bundle ID once at the start so `.switchBack`
+    /// always returns to where the user was when the macro fired, no matter
+    /// how many switches happened in the middle.
     func executeMacro(_ macro: MacroSequence) {
+        let originalBundleID = self.currentBundleID
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
             for step in macro.steps {
-                guard let action = step.padAction else { continue }
-                self?.handleAction(action)
-                if step.delayAfter > 0 {
-                    Thread.sleep(forTimeInterval: step.delayAfter)
+                switch step.kind {
+                case .action:
+                    if let action = step.padAction {
+                        self.handleAction(action)
+                    }
+                    if step.delayAfter > 0 {
+                        Thread.sleep(forTimeInterval: step.delayAfter)
+                    }
+
+                case .switchToApp:
+                    if let bid = step.targetBundleID, !bid.isEmpty {
+                        DebugLogger.shared.log("macro: switch → \(step.targetDisplayName ?? bid)")
+                        Self.activateApp(bundleID: bid)
+                    }
+                    let waitMs = step.waitMs ?? MacroStep.defaultSwitchWaitMs
+                    Thread.sleep(forTimeInterval: Double(waitMs) / 1000.0)
+
+                case .switchBack:
+                    if let bid = originalBundleID, !bid.isEmpty {
+                        DebugLogger.shared.log("macro: switch back → \(bid)")
+                        Self.activateApp(bundleID: bid)
+                    }
+                    let waitMs = step.waitMs ?? MacroStep.defaultSwitchWaitMs
+                    Thread.sleep(forTimeInterval: Double(waitMs) / 1000.0)
+
+                case .keystroke:
+                    if let kc = step.keyCode {
+                        DebugLogger.shared.log("macro: keystroke \(kc) mods=\(step.modifiers ?? 0)")
+                        Self.sendKeystroke(keyCode: UInt16(kc),
+                                           modifiers: UInt64(step.modifiers ?? 0))
+                    }
+                    if step.delayAfter > 0 {
+                        Thread.sleep(forTimeInterval: step.delayAfter)
+                    }
                 }
             }
         }
+    }
+
+    /// Activate an app by bundle ID. If the app isn't running, launches it.
+    /// No-op (with a debug log) on a bundle ID we can't resolve.
+    private static func activateApp(bundleID: String) {
+        let running = NSWorkspace.shared.runningApplications
+        if let app = running.first(where: { $0.bundleIdentifier == bundleID }) {
+            app.activate(options: [])
+            return
+        }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            DebugLogger.shared.log("macro: no app installed with bundle id \(bundleID)")
+            return
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+            if let error = error {
+                DebugLogger.shared.log("macro: launch failed for \(bundleID): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Synthesize a key-down + key-up event pair. Used by macro `.keystroke`
+    /// steps to send arbitrary shortcuts (Spotify's like-song, screenshot
+    /// shortcuts, etc.) without binding them to a PadAction first.
+    private static func sendKeystroke(keyCode: UInt16, modifiers: UInt64) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        if modifiers != 0 {
+            down?.flags = CGEventFlags(rawValue: modifiers)
+            up?.flags = CGEventFlags(rawValue: modifiers)
+        }
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
     }
 
     private func handleAction(_ action: PadAction) {
