@@ -10,15 +10,19 @@ struct DeveloperPanel: View {
     @ObservedObject private var settings = SudoSettings.shared
     @ObservedObject private var pluginManager = PluginManager.shared
     @ObservedObject private var debugLogger = DebugLogger.shared
+    @ObservedObject private var padConsole = PadConsoleReader.shared
 
     @State private var copiedKey = false
+    @State private var copiedPadConsole = false
     @State private var terminalInput = ""
 
     var body: some View {
         SettingsPanelScaffold(
             title: "developer",
-            subtitle: "local api, debug log, terminal, and loaded plugins."
+            subtitle: "local api, pad console, debug log, terminal, and loaded plugins."
         ) {
+            padConsoleSection
+            SudoDivider()
             apiSection
             SudoDivider()
             debugSection
@@ -26,6 +30,109 @@ struct DeveloperPanel: View {
             terminalSection
             SudoDivider()
             pluginsSection
+        }
+    }
+
+    // MARK: - Pad console
+    //
+    // Tails /dev/cu.usbmodem* (the pad's USB CDC console) so a user
+    // can grab the firmware boot log without opening Terminal. The
+    // exact thing we'd otherwise ask them to do via `screen
+    // /dev/cu.usbmodem<id> 115200`. PadConsoleReader handles the
+    // POSIX side; this view is just controls + transcript display.
+
+    @ViewBuilder
+    private var padConsoleSection: some View {
+        sectionHeader("pad console")
+        Text("tails the pad's usb cdc serial port (`/dev/cu.usbmodem*`). use this to grab the firmware boot log when debugging connect-time issues — copy the output and share it.")
+            .font(SudoTheme.caption)
+            .foregroundColor(SudoTheme.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+
+        HStack(spacing: 8) {
+            Image(systemName: padConsole.isConnected ? "circle.fill" : "circle")
+                .font(.system(size: 9))
+                .foregroundStyle(padConsole.isConnected ? SudoTheme.accent : SudoTheme.textMuted)
+            if let path = padConsole.portPath {
+                Text(path)
+                    .font(SudoTheme.code(size: 11))
+                    .foregroundColor(SudoTheme.text)
+            } else {
+                Text(padConsole.isConnected ? "connected" : "not connected")
+                    .font(SudoTheme.body)
+                    .foregroundColor(SudoTheme.textMuted)
+            }
+            Spacer()
+            if padConsole.isConnected {
+                Button("disconnect") { padConsole.stop() }
+                    .font(SudoTheme.caption).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+                Button("reconnect") { padConsole.reconnect() }
+                    .font(SudoTheme.caption).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+            } else {
+                Button("connect") { padConsole.start() }
+                    .font(SudoTheme.caption).foregroundColor(SudoTheme.accent).buttonStyle(.plain)
+            }
+        }
+
+        if let err = padConsole.lastError, !padConsole.isConnected {
+            Text(err)
+                .font(SudoTheme.caption)
+                .foregroundColor(SudoTheme.error)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    if padConsole.lines.isEmpty {
+                        Text("no output yet — click connect, then unplug and replug the pad.")
+                            .font(SudoTheme.code(size: 11))
+                            .foregroundColor(SudoTheme.textMuted)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(Array(padConsole.lines.enumerated()), id: \.offset) { idx, line in
+                            Text(line)
+                                .font(SudoTheme.code(size: 11))
+                                .foregroundColor(
+                                    line.contains("EXCEPTION") || line.lowercased().contains("error") ? SudoTheme.error :
+                                    line.hasPrefix("──") ? SudoTheme.textMuted :
+                                    SudoTheme.text
+                                )
+                                .textSelection(.enabled)
+                                .id(idx)
+                        }
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: 260)
+            .background(SudoTheme.codeBackground)
+            .overlay(RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius).stroke(SudoTheme.border.opacity(0.3), lineWidth: 0.5))
+            .onChange(of: padConsole.lines.count) { _ in
+                if let last = padConsole.lines.indices.last { proxy.scrollTo(last, anchor: .bottom) }
+            }
+        }
+
+        HStack(spacing: 14) {
+            Button(copiedPadConsole ? "copied!" : "copy all") {
+                Clipboard.setString(padConsole.transcript)
+                copiedPadConsole = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copiedPadConsole = false }
+            }
+            .font(SudoTheme.caption)
+            .foregroundColor(SudoTheme.accent)
+            .buttonStyle(.plain)
+            .disabled(padConsole.lines.isEmpty)
+
+            Button("clear") { padConsole.clear() }
+                .font(SudoTheme.caption).foregroundColor(SudoTheme.textMuted).buttonStyle(.plain)
+                .disabled(padConsole.lines.isEmpty)
+
+            Spacer()
+            Text("\(padConsole.lines.count) lines")
+                .font(SudoTheme.caption).foregroundColor(SudoTheme.textMuted)
+                .monospacedDigit()
         }
     }
 
