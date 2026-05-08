@@ -162,49 +162,41 @@ final class SudoEngine: ObservableObject {
         SudoTelemetry.shared.trackLaunch()
     }
 
-    /// Check permissions and (re)start the hotkey listener if possible
+    /// Check permissions and (re)start the hotkey listener if possible.
+    ///
+    /// Uses `CGEvent.tapCreate()` as the source of truth for whether
+    /// accessibility is granted, NOT `AXIsProcessTrusted()` /
+    /// `AXIsProcessTrustedWithOptions()`. Both AX trust APIs cache at
+    /// the per-process level and don't refresh when System Settings
+    /// changes — they only update on process relaunch — so polling
+    /// them after the user toggles Accessibility on returns a stale
+    /// "false" forever. `CGEvent.tapCreate()`, on the other hand,
+    /// consults TCC every call and reflects current state, which is
+    /// what we actually want.
+    ///
+    /// The flow is now: try to start the listener (which calls
+    /// `tapCreate`); if `isListening` becomes true the user has AX
+    /// granted right now; if not, the 3 s permission timer will try
+    /// again on the next tick. As soon as the user grants AX in
+    /// System Settings, the next call to `tapCreate` succeeds and
+    /// the popover banner clears within ~3 seconds — no relaunch
+    /// required.
     func checkAndConnect() {
-        // Use AXIsProcessTrustedWithOptions instead of plain
-        // AXIsProcessTrusted: the latter can return a stale "false"
-        // for the lifetime of the process after `tccutil reset`
-        // (which build.sh runs on every rebuild) even after the user
-        // re-grants Accessibility in System Settings. Passing the
-        // prompt option as `false` skips the prompt UI but still
-        // forces the trust cache to refresh, which is the bit that
-        // matters here. The cache miss was the likely cause behind
-        // "I toggled accessibility on and the app still won't connect".
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
-        let axTrusted = AXIsProcessTrustedWithOptions(options)
-        DebugLogger.shared.log("permission check: ax=\(axTrusted), tap=\(hotkeyListener.isListening)")
+        if !hotkeyListener.isListening {
+            hotkeyListener.stop()
+            hotkeyListener.start { [weak self] action in
+                self?.handleAction(action)
+            }
+        }
+        let listening = hotkeyListener.isListening
+        DebugLogger.shared.log("permission check: tap=\(listening)")
 
         DispatchQueue.main.async {
-            self.axPermissionGranted = axTrusted
-        }
-
-        if axTrusted {
-            if !hotkeyListener.isListening {
-                hotkeyListener.stop()
-                hotkeyListener.start { [weak self] action in
-                    self?.handleAction(action)
-                }
-            }
-            let listening = hotkeyListener.isListening
-            DispatchQueue.main.async {
-                self.isConnected = listening
-                if listening {
-                    self.permissionStatus = "all permissions granted"
-                    // Don't invalidate the timer — we want it to keep
-                    // pulsing so we can re-enable a tap that macOS
-                    // disables under load.
-                } else {
-                    self.permissionStatus = "accessibility granted but event tap failed — try restarting"
-                }
-            }
-        } else {
-            DispatchQueue.main.async {
-                self.isConnected = false
-                self.permissionStatus = "accessibility not granted"
-            }
+            self.axPermissionGranted = listening
+            self.isConnected = listening
+            self.permissionStatus = listening
+                ? "all permissions granted"
+                : "accessibility permission required"
         }
     }
 

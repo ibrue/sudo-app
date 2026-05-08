@@ -70,8 +70,8 @@
 - `AutomationButtonFinder` — AppleScript via System Events for hard-to-reach buttons (sheets, alerts, nested dialogs)
 - `OCRButtonFinder` — Vision framework screenshot OCR (fallback)
 - `ActionExecutor` — presses buttons via AXPress or CGEvent click (with center-click fallback)
-- `FirmwareFlasher` — detects RP2040 bootloader, copies UF2 firmware for simple mode presets
-- `HotkeyListener` — configurable CGEvent tap (default: Ctrl+Shift+F13–F16)
+- `FirmwareFlasher` — detects RP2040 bootloader, copies UF2 firmware. Also owns the IOKit HID watcher (matches Adafruit VID `0x239A`) that drives the popover's "device: connected (running)" indicator when CIRCUITPY is hidden in normal mode.
+- `HotkeyListener` — configurable CGEvent tap (default: Ctrl+Shift+F13–F16). Has its own IOKit HID watcher that rebuilds the tap on any keyboard hot-plug (50 ms debounce, was 250 ms — too long for single-pad plug-in).
 - `LocalAPIServer` — HTTP API on port 7483 + MCP server endpoints
 - `WebhookManager` — fires POST to user-configured URL on each action
 - `SudoTelemetry` — anonymous usage tracking (button number + mode, no action names)
@@ -79,26 +79,28 @@
 - `SudoSettings` — persisted preferences singleton (UserDefaults)
 - `PadAction` — enum mapping 4 buttons to actions, delegates to settings for display names / search terms
 - `ButtonPreset` — quick-apply configs (12 presets: ai-agent, plan-mode, claude-code, shortcuts, media, browsing, discord, cad, video-editing, writing, communication, design)
-- `MacroSequence` — chained actions with delays, assignable to buttons
+- `MacroSequence` — chained steps, assignable to a button. Steps are kinds: `.action` (fires a PadAction), `.switchToApp(bundleID, displayName, waitMs)` (activates / launches an app), `.switchBack(waitMs)` (restores the app that was frontmost when the macro fired), `.keystroke(keyCode, modifiers, delayAfter)` (sends a raw key combo without binding it to a PadAction). Backwards-compatible Codable: legacy macros default `kind` to `.action`.
 - `AutoApproveRule` — rules engine for automatic approval with safety exclusions
 - `RulesEngine` — evaluates auto-approve rules against app + context
 - `PadCommunicator` — USB serial to RP2040 for LED feedback
+- `PadConsoleReader` — tails the firmware's CDC console at `/dev/cu.usbmodem*`. Surfaces every press / boot line as a published `lines` array; surfaces in Settings → Developer → "pad console" so users can copy boot logs for debugging without `screen`. Cancels its DispatchSource synchronously on EOF (a TTY at EOF stays "readable" until cancelled, which used to cause a disconnect-spam loop).
 - `PluginManager` — loads .json plugin files from ~/Library/Application Support/Sudo/Plugins/
 - `DevRebuilder` — git fetch + rebuild + reinstall from menu bar (dev mode only)
 - `TestWindowManager` — AppKit NSWindow for the test prompt (bypasses MenuBarExtra limitation)
 
 ## Action Pipeline
-1. HotkeyListener receives keypress → dispatches to background queue
+1. HotkeyListener receives keypress → logs `pad input: button N (...)` → dispatches to background queue
 2. Debounce check (configurable, default 20ms)
-3. Macro check (if button has assigned macro, execute sequence)
-4. Mode check:
+3. `handleAction` logs `trigger: button N (name) in <app>` so the Debug console shows the full chain (input → trigger → result)
+4. Macro check (if button has assigned macro, execute sequence — including scoped switch / keystroke steps)
+5. Mode check:
    - `keyCombo` → send keyboard shortcut directly, done
    - `mediaKey` → send media key event, done
    - `aiSearch` → continue to detection pipeline
-5. App detection (frontmost app, or all apps if search-all enabled)
-6. AX tree search (3s timeout) → Automation/AppleScript (3s timeout) → OCR fallback (3s timeout) → keyboard fallback (editors only)
-7. Execute action (AXPress → center click fallback)
-8. Finish: update UI, sound, webhook, telemetry, LED, notification
+6. App detection (frontmost app, or all apps if search-all enabled)
+7. AX tree search (3s timeout) → Automation/AppleScript (3s timeout) → OCR fallback (3s timeout) → keyboard fallback (editors only)
+8. Execute action (AXPress → center click fallback)
+9. Finish: update UI, sound, webhook, telemetry, LED, notification
 
 ## Permissions
 - Accessibility required for hotkey listener + AX tree reading
@@ -106,6 +108,38 @@
 - Permission check runs every 3s until connected, auto-retries event tap
 - `isConnected` = hotkey event tap successfully created (no AX test needed)
 - Screen Recording permission needed for OCR fallback only
+
+## Macros
+
+`MacroSequence` is a chain of `MacroStep`s with a `Kind` discriminator.
+Currently four kinds, all executed by `SudoEngine.executeMacro`:
+
+| kind | fields | what it does |
+|------|--------|--------------|
+| `.action` | `action` (PadAction rawValue), `delayAfter` | Fires one of the four pad actions through the normal pipeline (debounce + app detection + AX search + execute). Per-step `delayAfter` is post-action. |
+| `.switchToApp` | `targetBundleID`, `targetDisplayName`, `waitMs` | Activates (or launches via NSWorkspace) an app and waits `waitMs` for it to become frontmost so the next keystroke lands. Default 150 ms; bump for heavier apps (Logic, Final Cut). |
+| `.switchBack` | `waitMs` | Activates whatever app was frontmost when the macro started. The original bundle ID is captured once at the top of `executeMacro`, so multiple intermediate switches don't lose it. |
+| `.keystroke` | `keyCode`, `modifiers`, `delayAfter` | Sends a CGEvent down + up at `.cghidEventTap`. Lets a macro fire app-specific shortcuts (Spotify's like-song, screenshot, etc.) without binding them to a PadAction first. |
+
+**Codable note:** `MacroStep` is a struct (not an enum-with-associated-values)
+so existing user data — saved before `kind` existed — keeps decoding.
+The custom `init(from:)` defaults `kind` to `.action` and reads
+`action`/`delayAfter` like before; new fields are all optional.
+
+**Recursion guard:** synthesized keystrokes go through `cghidEventTap`,
+which means our own event tap could intercept them. We get away with
+it today because the default macros (Cmd+Shift+4 screenshot,
+Option+Shift+B Spotify like) don't collide with the F13–F18 + ctrl-shift
+hotkey bindings. If someone adds a `.keystroke` step that DOES match
+a binding, suspend / resume `HotkeyListener` around the post — see
+`HotkeyListener.suspend()` / `.resume()`.
+
+**Default macros** (`SudoSettings.defaultMacros`):
+- `double approve` / `approve all` — legacy `.action`-only chains.
+- `screenshot` — single `.keystroke(Cmd+Shift+4)` step.
+- `like song in spotify` — `.switchToApp(com.spotify.client)` →
+  `.keystroke(Option+Shift+B)` → `.switchBack()`. The canonical
+  scoped-macro reference.
 
 ## Auto-Profile Switching
 - `SudoSettings.autoSwitchEnabled` (default: true) — auto-applies preset when frontmost app changes category
@@ -154,9 +188,19 @@ button when permission is missing. After granting, the in-app
 permission timer (every 3 s) picks it up; if it doesn't, click
 "re-check" in the banner.
 
-Use `AXIsProcessTrustedWithOptions(_:)` (not plain `AXIsProcessTrusted()`)
-when checking — the plain call can return a stale "false" for the
-lifetime of the process after `tccutil reset`. See `SudoEngine.checkAndConnect`.
+**Don't use `AXIsProcessTrusted()` or `AXIsProcessTrustedWithOptions()`
+to gate the connect-to-pad flow.** Both APIs cache at the per-process
+level and only refresh on relaunch — they'll return a stale "false"
+for the rest of the process lifetime even after the user has just
+re-granted Accessibility in System Settings. This isn't a bug in
+the API per se, but it makes them useless as a polling check.
+
+Use `CGEvent.tapCreate()` as the source of truth instead. It
+consults TCC at call time and reflects current state, so polling
+it every 3 seconds (which the permission timer already does) picks
+up a fresh grant without needing a relaunch. See
+`SudoEngine.checkAndConnect` — the AX trust APIs are gone from
+that path entirely; success is "did the tap get created."
 
 Version is read from `OTAUpdater.currentVersion` (single source of truth).
 Build script reads version from Swift source via grep.
@@ -178,6 +222,7 @@ the boot log out. Useful for "pad takes ages to connect" reports.
 
 - **2026-04-02:** 17 issues across MainView, MenuBarHelpers, TestPromptView, SudoSettings, ConfigView.
 - **v1.6.0-beta:** macOS-native pivot. Hybrid type system (system fonts + a mono lane for code/brand). Adaptive button colors via `PadAction.buttonColor`. Larger button cards (52pt min height, 28pt tinted disc). Popover widened to 360pt. Platform shim at `Services/Platform/` so panel views no longer touch AppKit directly.
+- **v1.7.0-beta:** Scoped macros (switch-to-app / switch-back / raw keystroke step kinds; `screenshot` and `like song in spotify` defaults). Pad console reader in the Developer panel (tails `/dev/cu.usbmodem*`, copy-to-clipboard). Accessibility detection switched from `AXIsProcessTrusted` (cached per-process, returned stale false for the lifetime of the process) to `CGEvent.tapCreate` (real-time TCC check — picks up a fresh grant on the next 3 s timer tick, no relaunch needed). Press / release CDC logging in the firmware paired with `trigger: ...` lines in the Debug console so the full chain is visible. Hot-plug debounce 250 ms → 50 ms. `.metadata_never_index` written first during flash so Spotlight stops thrashing CIRCUITPY.
 
 ## Settings surface
 
@@ -196,6 +241,20 @@ Open the window from the popover via the "open full settings…" card or
 the macros / history quick-link chips. `SettingsWindowManager.shared.open(
 engine:updater:rebuilder:apiServer:initialSection:)` accepts an
 `initialSection` to deep-link a specific panel.
+
+The developer panel has three log surfaces — name overlap caused
+real confusion, so they're documented here:
+
+| section | what it shows | source |
+|---------|---------------|--------|
+| **pad console** | every press / release the firmware sees + boot log | `/dev/cu.usbmodem*` CDC stream via `PadConsoleReader` |
+| **debug console** | every press the event tap catches + every action sudo triggers + pipeline results | `DebugLogger.shared` |
+| **build & rebuild terminal** | `./build.sh` and the in-app rebuild button output | `DevRebuilder.buildLog` |
+
+The first two should both light up when a macropad button is pressed.
+The third is unrelated to macropad input — it's the pull-and-rebuild
+log. Each section has a one-line subtitle in the panel itself for the
+same reason.
 
 ## Common Issues
 - `CGEventFlags` requires `import CoreGraphics` in any file using it

@@ -56,6 +56,11 @@ final class HotkeyListener {
             },
             userInfo: selfPtr
         ) else {
+            // tapCreate returns nil when the calling process lacks
+            // Accessibility (or, less commonly, Input Monitoring).
+            // Log to the Debug console too so users can see this
+            // happen each time the permission timer retries.
+            DebugLogger.shared.log("event tap creation failed — grant Accessibility in System Settings → Privacy & Security → Accessibility")
             print("[sudo] ERROR: Failed to create event tap.")
             print("[sudo] Grant Accessibility permission in System Settings → Privacy & Security → Accessibility")
             return
@@ -70,6 +75,7 @@ final class HotkeyListener {
         // declaration of hidManager for why this matters.
         startHIDDeviceWatcher()
 
+        DebugLogger.shared.log("event tap created — listening for hotkeys")
         print("[sudo] Hotkey listener active — waiting for input")
     }
 
