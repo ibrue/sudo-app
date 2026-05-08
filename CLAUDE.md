@@ -188,9 +188,19 @@ button when permission is missing. After granting, the in-app
 permission timer (every 3 s) picks it up; if it doesn't, click
 "re-check" in the banner.
 
-Use `AXIsProcessTrustedWithOptions(_:)` (not plain `AXIsProcessTrusted()`)
-when checking — the plain call can return a stale "false" for the
-lifetime of the process after `tccutil reset`. See `SudoEngine.checkAndConnect`.
+**Don't use `AXIsProcessTrusted()` or `AXIsProcessTrustedWithOptions()`
+to gate the connect-to-pad flow.** Both APIs cache at the per-process
+level and only refresh on relaunch — they'll return a stale "false"
+for the rest of the process lifetime even after the user has just
+re-granted Accessibility in System Settings. This isn't a bug in
+the API per se, but it makes them useless as a polling check.
+
+Use `CGEvent.tapCreate()` as the source of truth instead. It
+consults TCC at call time and reflects current state, so polling
+it every 3 seconds (which the permission timer already does) picks
+up a fresh grant without needing a relaunch. See
+`SudoEngine.checkAndConnect` — the AX trust APIs are gone from
+that path entirely; success is "did the tap get created."
 
 Version is read from `OTAUpdater.currentVersion` (single source of truth).
 Build script reads version from Swift source via grep.
@@ -212,7 +222,7 @@ the boot log out. Useful for "pad takes ages to connect" reports.
 
 - **2026-04-02:** 17 issues across MainView, MenuBarHelpers, TestPromptView, SudoSettings, ConfigView.
 - **v1.6.0-beta:** macOS-native pivot. Hybrid type system (system fonts + a mono lane for code/brand). Adaptive button colors via `PadAction.buttonColor`. Larger button cards (52pt min height, 28pt tinted disc). Popover widened to 360pt. Platform shim at `Services/Platform/` so panel views no longer touch AppKit directly.
-- **v1.7.0-beta:** Scoped macros (switch-to-app / switch-back / raw keystroke step kinds; `screenshot` and `like song in spotify` defaults). Pad console reader in the Developer panel (tails `/dev/cu.usbmodem*`, copy-to-clipboard). Accessibility trust-cache fix (use `AXIsProcessTrustedWithOptions`, not plain `AXIsProcessTrusted`, after `tccutil reset`). Press / release CDC logging in the firmware paired with `trigger: ...` lines in the Debug console so the full chain is visible. Hot-plug debounce 250 ms → 50 ms. `.metadata_never_index` written first during flash so Spotlight stops thrashing CIRCUITPY.
+- **v1.7.0-beta:** Scoped macros (switch-to-app / switch-back / raw keystroke step kinds; `screenshot` and `like song in spotify` defaults). Pad console reader in the Developer panel (tails `/dev/cu.usbmodem*`, copy-to-clipboard). Accessibility detection switched from `AXIsProcessTrusted` (cached per-process, returned stale false for the lifetime of the process) to `CGEvent.tapCreate` (real-time TCC check — picks up a fresh grant on the next 3 s timer tick, no relaunch needed). Press / release CDC logging in the firmware paired with `trigger: ...` lines in the Debug console so the full chain is visible. Hot-plug debounce 250 ms → 50 ms. `.metadata_never_index` written first during flash so Spotlight stops thrashing CIRCUITPY.
 
 ## Settings surface
 
