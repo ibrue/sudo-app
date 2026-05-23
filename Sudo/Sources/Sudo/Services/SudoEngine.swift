@@ -116,18 +116,26 @@ final class SudoEngine: ObservableObject {
         //   - if that doesn't restore listening, fall back to recreating
         //     the tap entirely
         //   - syncs `isConnected` so the UI stays accurate
-        permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+        //
+        // IMPORTANT: use .common run loop mode, not the default .default mode.
+        // Timer.scheduledTimer schedules in .default only, which does not fire
+        // when the run loop is in .modalPanel mode — which macOS enters when
+        // the MenuBarExtra NSPanel is key. The symptom is that the banner
+        // never clears while the popover is open: the timer stops ticking the
+        // moment the user clicks the menu bar icon to check their status.
+        let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             self.hotkeyListener.ensureEnabled()
             if !self.hotkeyListener.isListening {
                 self.checkAndConnect()
             } else {
-                let listening = true
                 DispatchQueue.main.async {
-                    if !self.isConnected { self.isConnected = listening }
+                    if !self.isConnected { self.isConnected = true }
                 }
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        permissionCheckTimer = timer
 
         // Event-driven app detection via NSWorkspace notifications
         let nc = NSWorkspace.shared.notificationCenter
