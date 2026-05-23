@@ -50,11 +50,18 @@ struct SudoApp: App {
         MenuBarExtra {
             MenuBarView(engine: engine, updater: updater, rebuilder: rebuilder, apiServer: apiServer)
                 .onAppear {
-                    guard !hasLaunched else { return }
-                    hasLaunched = true
-                    engine.start()
-                    updater.startPeriodicChecks()
-                    apiServer.start(engine: engine)
+                    if !hasLaunched {
+                        hasLaunched = true
+                        engine.start()
+                        updater.startPeriodicChecks()
+                        apiServer.start(engine: engine)
+                    } else if !engine.isConnected {
+                        // User opened the popover while the banner is showing —
+                        // re-check immediately instead of waiting up to 3 s for
+                        // the timer. Common case: user just granted Accessibility
+                        // in System Settings and switched back to the app.
+                        engine.checkAndConnect()
+                    }
                 }
         } label: {
             Text(menuBarLabel)
