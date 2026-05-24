@@ -20,7 +20,29 @@ final class PadConsoleReader: ObservableObject {
     @Published private(set) var isConnected: Bool = false
     @Published private(set) var lastError: String?
 
+    /// Flips true the moment we see ANY firmware print on CDC — the signal
+    /// that the main loop is running and the pad is ready to accept presses.
+    /// The Sudo engine subscribes to this to refresh the event tap so the
+    /// freshly-enumerated HID keyboard's events route through.
+    ///
+    /// Why "any" instead of just `## sudo-ready`: the CircuitPython USB CDC
+    /// TX FIFO is small and unbuffered before the host opens the tty. The
+    /// boot prints (`## sudo-code.py-start` through `## sudo-ready`) can
+    /// roll out of the FIFO before `PadConsoleReader` connects — common
+    /// because the CDC tty appears 50 ms–1.5 s after HID enumeration. If
+    /// we only matched `## sudo-ready`, missing it meant waiting 30 s for
+    /// the first `## sudo-alive` heartbeat with no tap refresh in between,
+    /// which is exactly the "30 s before any button works" symptom we saw.
+    /// Any `## sudo-` line proves the firmware is alive, so it's a valid
+    /// trigger.
+    @Published private(set) var padReady: Bool = false
+
     private static let maxLines = 2000
+
+    /// Prefix that every firmware diagnostic line carries. Seeing any line
+    /// with this prefix means the main loop is running, which is what
+    /// `padReady` represents.
+    private static let runningPrefix = "## sudo-"
 
     private var fd: Int32 = -1
     private var readSource: DispatchSourceRead?
@@ -28,6 +50,18 @@ final class PadConsoleReader: ObservableObject {
     private var lineBuffer: String = ""
 
     // MARK: - Public
+
+    /// Try to open the first available `/dev/cu.usbmodem*` device and
+    /// start tailing it. Idempotent — calling twice while connected
+    /// is a no-op. Silent if no device is present (vs. `start()` which
+    /// records a "plug in the pad" error). Use this from app launch so
+    /// we're tailing CDC the moment the pad enumerates, without making
+    /// noise when the pad isn't there.
+    func startIfPossible() {
+        guard fd < 0 else { return }
+        guard Self.findPort() != nil else { return }
+        start()
+    }
 
     /// Try to open the first available `/dev/cu.usbmodem*` device and
     /// start tailing it. Idempotent — calling twice while connected
@@ -75,6 +109,7 @@ final class PadConsoleReader: ObservableObject {
             self.isConnected = true
             self.lastError = nil
             self.append(line: "── connected to \(path) ──")
+            Self.diagLog("[mac] tty-opened path=\(path)")
         }
     }
 
@@ -161,11 +196,42 @@ final class PadConsoleReader: ObservableObject {
         }
     }
 
-    /// Always called on main. Appends + caps line count.
+    /// Always called on main. Appends + caps line count. Detects the
+    /// firmware READY sentinel and posts a notification so the engine
+    /// can react without polling.
     private func append(line: String) {
         lines.append(line)
         if lines.count > Self.maxLines {
             lines.removeFirst(lines.count - Self.maxLines)
+        }
+        Self.diagLog(line)
+        if !padReady, line.contains(Self.runningPrefix) {
+            padReady = true
+            NotificationCenter.default.post(name: .padReady, object: nil)
+        }
+    }
+
+    /// Mirror every CDC line to /tmp/sudo-pad-console.log with a
+    /// millisecond wall-clock prefix. Used during connect-time
+    /// debugging — gives us a single timeline of "## sudo-..." pad
+    /// boot markers plus Mac-side observations of "tty-appeared",
+    /// "padReady fired", etc., so we can see exactly where the time
+    /// goes between plug-in and first-press-works. Cheap (~80 bytes
+    /// per line); leave on in production.
+    static func diagLog(_ line: String) {
+        let ms = Int(Date().timeIntervalSince1970 * 1000)
+        let entry = "\(ms) \(line)\n"
+        guard let data = entry.data(using: .utf8) else { return }
+        let path = "/tmp/sudo-pad-console.log"
+        let url = URL(fileURLWithPath: path)
+        if FileManager.default.fileExists(atPath: path) {
+            if let fh = try? FileHandle(forWritingTo: url) {
+                _ = try? fh.seekToEnd()
+                _ = try? fh.write(contentsOf: data)
+                _ = try? fh.close()
+            }
+        } else {
+            try? data.write(to: url)
         }
     }
 
@@ -178,6 +244,7 @@ final class PadConsoleReader: ObservableObject {
         guard isConnected else { return }
         isConnected = false
         portPath = nil
+        padReady = false
         if let reason = reason { lastError = reason }
         // fd is closed by the dispatch source's cancel handler — it
         // runs on the source's queue, so closing it from main here
@@ -186,4 +253,12 @@ final class PadConsoleReader: ObservableObject {
         // hop, in either stop() or readAvailable's EOF branch).
         append(line: "── disconnected ──")
     }
+}
+
+extension Notification.Name {
+    /// Posted by PadConsoleReader the first time any `## sudo-` firmware
+    /// line is seen after (re)connect — proof the main loop is running.
+    /// The Sudo engine listens for it to refresh the event tap and flip
+    /// the popover's connected state immediately, no polling required.
+    static let padReady = Notification.Name("sudo.pad.ready")
 }

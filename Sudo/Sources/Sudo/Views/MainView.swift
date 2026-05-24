@@ -1,21 +1,25 @@
 import SwiftUI
 
-/// The popover. Header + 4 button cards + mode picker + footer.
+/// The popover. Header strip + status card + 4 button cards.
 ///
 /// Anything heavier (flash, settings, presets, updates, bug report, quit)
-/// lives behind the gear button → ConfigView. Mode choices are just two:
-/// dynamic (app dispatches) and simple (firmware types keystrokes natively).
+/// lives behind the gear button → a `Menu` that either opens the Settings
+/// window directly or fires a one-off action. ConfigView (the old secondary
+/// popover that duplicated settings state) was deleted as part of the v2
+/// redesign — single source of truth lives in the Settings window.
 struct MainView: View {
     @ObservedObject var engine: SudoEngine
     @ObservedObject var updater: OTAUpdater
     @ObservedObject var rebuilder: DevRebuilder
+    @ObservedObject var apiServer: LocalAPIServer
     @ObservedObject var settings: SudoSettings = .shared
-
-    let onOpenConfig: () -> Void
+    @ObservedObject private var flasher: FirmwareFlasher = .shared
+    @ObservedObject private var padConsole: PadConsoleReader = .shared
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            statusCard
 
             if !engine.isConnected {
                 permissionBanner
@@ -25,29 +29,20 @@ struct MainView: View {
                 mcpOverlay(prompt: mcp)
             }
 
-            VStack(spacing: 8) {
-                ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
-                    buttonCard(for: action)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-
-            footer
+            buttonCards
         }
+        .padding(.bottom, SudoTheme.popoverVPadding)
         .frame(width: SudoTheme.popoverWidth)
-        .background(.regularMaterial)
-        .animation(.easeInOut(duration: 0.2), value: engine.isConnected)
-        .animation(.easeOut(duration: 0.15), value: engine.lastResult)
+        .sudoBackground()
+        .animation(.smooth, value: engine.isConnected)
+        .animation(.smooth, value: engine.lastResult)
     }
 
     // MARK: - Header
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("[sudo]")
-                .font(SudoTheme.brand)
-                .foregroundStyle(SudoTheme.accent)
+            BrandMark(size: .inline)
 
             Text("v\(OTAUpdater.currentVersion)")
                 .font(SudoTheme.code(size: 10))
@@ -57,6 +52,7 @@ struct MainView: View {
             if updater.updateAvailable {
                 Button(action: { updater.checkForUpdates() }) {
                     Image(systemName: "arrow.up.circle.fill")
+                        .symbolRenderingMode(.hierarchical)
                         .font(.system(size: 12))
                         .foregroundStyle(SudoTheme.accent)
                 }
@@ -66,33 +62,203 @@ struct MainView: View {
 
             Spacer()
 
-            Circle()
-                .fill(engine.isConnected ? SudoTheme.accent : Color.secondary.opacity(0.4))
-                .frame(width: 6, height: 6)
-                .help(engine.isConnected ? "connected" : "no accessibility permission")
+            StatusDot(isOn: engine.isConnected)
+                .help(engine.isConnected ? "hotkeys ready" : "accessibility permission required")
 
-            Button(action: onOpenConfig) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .contentShape(Rectangle())
-                    .frame(width: 26, height: 26)
-            }
-            .buttonStyle(.plain)
-            .help("settings")
+            gearMenu
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, SudoTheme.popoverHPadding)
         .padding(.top, 14)
         .padding(.bottom, 10)
     }
 
-    // MARK: - Button card
+    private var gearMenu: some View {
+        Menu {
+            Button("settings…") { openSettings(.general) }
+                .keyboardShortcut(",", modifiers: [.command])
+            Button("edit buttons") { openSettings(.buttons) }
+            Button("edit macros") { openSettings(.macros) }
+            Divider()
+            Button("flash firmware to pad…") {
+                FirmwareFlasher.shared.flashFirmwareAndConfig(settings: settings)
+            }
+            Divider()
+            if updater.updateAvailable {
+                Button("install v\(updater.latestVersion)") { updater.checkForUpdates() }
+            } else {
+                Button("check for updates") { updater.checkForUpdates() }
+            }
+            Button("report bug…") { BugReporter.shared.fileReport(engine: engine) }
+            Button("about") { openSettings(.about) }
+            Divider()
+            Button("quit sudo") { AppLifecycle.terminate() }
+                .keyboardShortcut("q", modifiers: [.command])
+        } label: {
+            Image(systemName: "gearshape")
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("settings & actions")
+    }
+
+    // MARK: - Status card
+
+    private var statusCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Line 1: target app + mode pill + quick-toggles menu
+            HStack(spacing: 8) {
+                Image(systemName: "app.dashed")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text(engine.targetAppName ?? engine.detectedApp)
+                    .font(SudoTheme.bodyEmphasized)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                modePill
+                Spacer()
+                quickTogglesMenu
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: deviceIsPresent ? "keyboard.fill" : "keyboard")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 10))
+                    .foregroundStyle(deviceIsPresent ? SudoTheme.accent : .secondary)
+                Text(deviceStatusText)
+                    .font(SudoTheme.caption)
+                    .foregroundStyle(deviceIsPresent ? SudoTheme.accent : .secondary)
+                    .lineLimit(1)
+            }
+
+            // Line 2: last action + relative timestamp
+            if let entry = engine.actionLog.first {
+                HStack(spacing: 6) {
+                    Image(systemName: entry.succeeded ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 10))
+                        .foregroundStyle(entry.succeeded ? SudoTheme.accent : SudoTheme.error)
+                    Text(entry.action.lowercased())
+                        .font(SudoTheme.caption)
+                        .foregroundStyle(.secondary)
+                    Text("in \(entry.app.lowercased())")
+                        .font(SudoTheme.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Text(timeAgo(entry.timestamp))
+                        .font(SudoTheme.code(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                }
+            } else {
+                Text("waiting for input…")
+                    .font(SudoTheme.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+            // Line 3 (conditional): auto-switch transient status
+            if let autoSwitch = engine.autoSwitchStatus {
+                Text(autoSwitch)
+                    .font(SudoTheme.caption)
+                    .foregroundStyle(SudoTheme.accent)
+                    .transition(.opacity)
+            }
+        }
+        .padding(SudoTheme.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
+        .padding(.horizontal, SudoTheme.popoverHPadding)
+        .padding(.bottom, SudoTheme.popoverSectionGap)
+    }
+
+    private var deviceIsPresent: Bool {
+        flasher.hidConnected || padConsole.isConnected
+    }
+
+    private var deviceStatusText: String {
+        if flasher.hidConnected {
+            return padConsole.padReady ? "pad connected and ready" : "pad connected"
+        }
+        if padConsole.isConnected {
+            return "pad console connected"
+        }
+        return "pad not detected"
+    }
+
+    private var modePill: some View {
+        Menu {
+            Picker("mode", selection: $settings.appMode) {
+                ForEach(AppMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            HStack(spacing: 3) {
+                Text(settings.appMode.label)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .font(SudoTheme.code(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(SudoTheme.cardSurface, in: RoundedRectangle(cornerRadius: 5))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(settings.appMode.description)
+    }
+
+    private var quickTogglesMenu: some View {
+        Menu {
+            Toggle("play sound on press", isOn: $settings.soundEnabled)
+            Toggle("notify on failure", isOn: $settings.notifyOnFailure)
+            Toggle("launch at login", isOn: $settings.launchAtLogin)
+            Toggle("search all apps", isOn: $settings.searchAllApps)
+            Divider()
+            Toggle("auto-switch presets", isOn: $settings.autoSwitchEnabled)
+            Toggle("auto-approve rules", isOn: Binding(
+                get: { settings.autoApproveEnabled },
+                set: { settings.autoApproveEnabled = $0; engine.startAutoApproveTimer() }
+            ))
+        } label: {
+            Image(systemName: "ellipsis")
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 18)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("quick toggles")
+    }
+
+    // MARK: - Button cards
+
+    private var buttonCards: some View {
+        VStack(spacing: 8) {
+            ForEach(PadAction.physicalOrder.reversed(), id: \.rawValue) { action in
+                buttonCard(for: action)
+            }
+        }
+        .padding(.horizontal, SudoTheme.popoverHPadding)
+        .padding(.top, SudoTheme.popoverSectionGap)
+    }
 
     @ViewBuilder
     private func buttonCard(for action: PadAction) -> some View {
-        let last = engine.actionLog.first {
-            $0.action.lowercased() == action.displayName.lowercased()
-        }
         let tint = action.buttonColor
         let isLastTouched = engine.lastAction.lowercased()
             .contains(action.displayName.lowercased().components(separatedBy: " ").first ?? "")
@@ -117,16 +283,6 @@ struct MainView: View {
                     .lineLimit(1)
 
                 Spacer()
-
-                if let entry = last {
-                    Image(systemName: entry.succeeded ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(entry.succeeded ? SudoTheme.accent : SudoTheme.error)
-                    Text(timeAgo(entry.timestamp))
-                        .font(SudoTheme.code(size: 10))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -138,8 +294,8 @@ struct MainView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
                     .strokeBorder(
-                        isLastTouched ? tint.opacity(0.6) : Color.primary.opacity(0.08),
-                        lineWidth: isLastTouched ? 1.2 : 0.5
+                        isLastTouched ? tint : Color.primary.opacity(0.08),
+                        lineWidth: isLastTouched ? SudoTheme.ringWidthEmphasized : SudoTheme.ringWidth
                     )
             )
             .shadow(color: isLastTouched ? tint.opacity(0.20) : .clear, radius: 10, y: 1)
@@ -147,108 +303,76 @@ struct MainView: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button("test press") { engine.triggerAction(action) }
-            Button("rename…") { onOpenConfig() }
+            Button("rename…") { openSettings(.buttons) }
         }
-    }
-
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack(spacing: 10) {
-            Picker("", selection: $settings.appMode) {
-                ForEach(AppMode.allCases, id: \.self) { mode in
-                    Text(mode.label).tag(mode)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(maxWidth: 130, alignment: .leading)
-            .help(settings.appMode.description)
-
-            Spacer()
-
-            if let target = engine.targetAppName {
-                Text(target)
-                    .font(SudoTheme.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            Rectangle()
-                .fill(Color.primary.opacity(0.04))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-        )
     }
 
     // MARK: - Permission banner (only when accessibility is missing)
 
     private var permissionBanner: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(SudoTheme.error)
-                Text("accessibility permission required")
-                    .font(SudoTheme.bodyEmphasized)
-                Spacer()
-            }
-            HStack {
-                Button("open settings") { URLOpener.openAccessibilitySettings() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .tint(SudoTheme.error)
+        InlineBanner(
+            .danger,
+            title: "accessibility permission required",
+            message: "grant accessibility, then relaunch sudo. if it already looks granted, reset permissions first."
+        ) {
+            Button("open settings") { URLOpener.openAccessibilitySettings() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Color(nsColor: .systemRed))
 
-                Button("re-check") { engine.checkAndConnect() }
+            HStack(spacing: 6) {
+                Button("relaunch") { AppLifecycle.relaunch() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+
+                Button("reset permissions") { AppLifecycle.resetPrivacyPermissionsAndRelaunch() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                Button("re-check") { engine.checkAndConnect() }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
-                .fill(SudoTheme.error.opacity(0.10))
-        )
-        .padding(.horizontal, 14)
-        .padding(.bottom, 8)
+        .padding(.horizontal, SudoTheme.popoverHPadding)
+        .padding(.bottom, SudoTheme.popoverSectionGap)
     }
 
     // MARK: - MCP overlay (when an MCP request is pending approval)
 
     @ViewBuilder
     private func mcpOverlay(prompt: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("mcp approval requested")
-                .font(SudoTheme.bodyEmphasized)
-                .foregroundStyle(SudoTheme.accent)
-            Text(prompt)
-                .font(SudoTheme.body)
-                .foregroundStyle(.primary)
-                .lineLimit(3)
-            HStack(spacing: 8) {
+        InlineBanner(
+            .info,
+            title: "mcp approval requested",
+            message: prompt
+        ) {
+            HStack(spacing: 6) {
                 Button("approve") { engine.resolveMCPRequest(approved: true) }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .tint(SudoTheme.accent)
+                    .tint(.accentColor)
                 Button("reject") { engine.resolveMCPRequest(approved: false) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: SudoTheme.cardCornerRadius, style: .continuous)
-                .fill(.thinMaterial)
-        )
-        .padding(.horizontal, 14)
-        .padding(.bottom, 8)
+        .padding(.horizontal, SudoTheme.popoverHPadding)
+        .padding(.bottom, SudoTheme.popoverSectionGap)
     }
 
     // MARK: - Helpers
+
+    private func openSettings(_ section: SettingsWindow.Section) {
+        SettingsWindowManager.shared.open(
+            engine: engine,
+            updater: updater,
+            rebuilder: rebuilder,
+            apiServer: apiServer,
+            initialSection: section
+        )
+    }
 
     /// Compact "3s/2m/1h/2d" relative time.
     private func timeAgo(_ date: Date) -> String {

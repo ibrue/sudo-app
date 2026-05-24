@@ -4,18 +4,15 @@ import SwiftUI
 
 final class ThemeTests: XCTestCase {
 
-    // MARK: - Color consistency with web design tokens
+    // MARK: - Color tokens
 
-    func testAccentColorIsTerminalGreen() {
-        // The accent color must be #00FF41 across all platforms
+    func testAccentColorIsDefined() {
         let accent = SudoTheme.accent
         XCTAssertNotNil(accent, "SudoTheme.accent must be defined")
     }
 
     func testAllColorsAreDefined() {
-        // Verify all design token colors exist
         let _ = SudoTheme.bg
-        let _ = SudoTheme.bgSecondary
         let _ = SudoTheme.text
         let _ = SudoTheme.textMuted
         let _ = SudoTheme.accent
@@ -23,15 +20,21 @@ final class ThemeTests: XCTestCase {
         let _ = SudoTheme.border
         let _ = SudoTheme.error
         let _ = SudoTheme.surface
+        let _ = SudoTheme.warning
+        let _ = SudoTheme.accentSoft
+        let _ = SudoTheme.dangerSoft
+        let _ = SudoTheme.infoSoft
     }
 
-    func testBorderRadiusIsZero() {
-        // Terminal aesthetic: no rounded corners
-        XCTAssertEqual(SudoTheme.borderRadius, 0, "Border radius must be 0 for terminal aesthetic")
+    func testCornerRadii() {
+        XCTAssertEqual(SudoTheme.cardCornerRadius, 14)
+        XCTAssertEqual(SudoTheme.cornerRadius, 10)
     }
 
-    func testBorderWidthIsOne() {
-        XCTAssertEqual(SudoTheme.borderWidth, 1)
+    func testBorderWidth() {
+        XCTAssertEqual(SudoTheme.borderWidth, 0.5)
+        XCTAssertEqual(SudoTheme.ringWidth, 0.5)
+        XCTAssertEqual(SudoTheme.ringWidthEmphasized, 1.2)
     }
 
     func testMonoFontHelper() {
@@ -45,6 +48,5 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(SudoTheme.spacingMd, 16)
         XCTAssertEqual(SudoTheme.spacingLg, 24)
         XCTAssertEqual(SudoTheme.spacingXl, 32)
-        XCTAssertEqual(SudoTheme.spacingXxl, 48)
     }
 }

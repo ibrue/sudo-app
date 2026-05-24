@@ -160,9 +160,17 @@ struct OnboardingView: View {
         if done { EmptyView() } else {
             switch step {
             case .accessibility:
-                Button("open settings") { URLOpener.openAccessibilitySettings() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                HStack(spacing: 6) {
+                    Button("open settings") { URLOpener.openAccessibilitySettings() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Button("relaunch") { AppLifecycle.relaunch() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Button("reset permissions") { AppLifecycle.resetPrivacyPermissionsAndRelaunch() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
             case .plugIn:
                 Button("scan") { flasher.detectDevice() }
                     .buttonStyle(.bordered)

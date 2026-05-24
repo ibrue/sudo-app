@@ -21,6 +21,7 @@ final class HotkeyListener {
     /// belt; takes ~10 ms and is invisible to the user.
     private var hidManager: IOHIDManager?
     private var pendingRestart: DispatchWorkItem?
+    private var lastTapCreateFailureLogAt: Date = .distantPast
 
     /// Whether the tap is created AND currently enabled. macOS will disable
     /// the tap if it ever takes too long to process an event; if we only
@@ -60,11 +61,16 @@ final class HotkeyListener {
             // Accessibility (or, less commonly, Input Monitoring).
             // Log to the Debug console too so users can see this
             // happen each time the permission timer retries.
-            DebugLogger.shared.log("event tap creation failed — grant Accessibility in System Settings → Privacy & Security → Accessibility")
-            print("[sudo] ERROR: Failed to create event tap.")
-            print("[sudo] Grant Accessibility permission in System Settings → Privacy & Security → Accessibility")
+            if Date().timeIntervalSince(lastTapCreateFailureLogAt) >= 5 {
+                lastTapCreateFailureLogAt = Date()
+                DebugLogger.shared.log("event tap creation failed — grant Accessibility in System Settings → Privacy & Security → Accessibility")
+                PadConsoleReader.diagLog("[mac] tapCreate-FAILED (need Accessibility)")
+                print("[sudo] ERROR: Failed to create event tap.")
+                print("[sudo] Grant Accessibility permission in System Settings → Privacy & Security → Accessibility")
+            }
             return
         }
+        PadConsoleReader.diagLog("[mac] tapCreate-OK (event tap listening)")
 
         eventTap = tap
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -150,7 +156,7 @@ final class HotkeyListener {
             let listener = Unmanaged<HotkeyListener>.fromOpaque(context).takeUnretainedValue()
             listener.scheduleTapRestart(reason: "hid keyboard added")
         }, selfPtr)
-        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         // Open with kIOHIDOptionsTypeNone (not seize) so we don't need
         // Input Monitoring permission. We're only consuming "device
         // added" notifications, not the actual key events.
@@ -163,7 +169,7 @@ final class HotkeyListener {
 
     private func stopHIDDeviceWatcher() {
         guard let manager = hidManager else { return }
-        IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         hidManager = nil
     }
@@ -214,12 +220,17 @@ final class HotkeyListener {
 
             if keyCode == bindingKeyCode && matchesModifiers(flags, required: requiredMods) {
                 DebugLogger.shared.log("pad input: button \(action.buttonNumber) (\(action.displayName)) keyCode=\(keyCode) flags=\(flags.rawValue)")
+                PadConsoleReader.diagLog("[mac] tap-press btn=\(action.buttonNumber) keyCode=\(keyCode)")
 
                 DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                     self?.handler?(action)
                 }
 
-                return nil  // consume the event
+                // Keep the pad's HID keyboard output observable by the
+                // focused app too. Sudo still reacts immediately, but the
+                // event tap can no longer make a working pad look dead by
+                // swallowing every F-key trigger.
+                return Unmanaged.passUnretained(event)
             }
         }
 

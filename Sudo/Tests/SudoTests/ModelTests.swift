@@ -11,15 +11,15 @@ final class ModelTests: XCTestCase {
 
     func testPadActionKeyCodes() {
         XCTAssertEqual(PadAction.approve.keyCode, 105) // F13
-        XCTAssertEqual(PadAction.reject.keyCode, 107)  // F14
-        XCTAssertEqual(PadAction.action3.keyCode, 113) // F15
+        XCTAssertEqual(PadAction.reject.keyCode, 64)   // F17
+        XCTAssertEqual(PadAction.action3.keyCode, 79)  // F18
         XCTAssertEqual(PadAction.action4.keyCode, 106) // F16
     }
 
     func testPadActionFKeyNumbers() {
         XCTAssertEqual(PadAction.approve.fKeyNumber, 13)
-        XCTAssertEqual(PadAction.reject.fKeyNumber, 14)
-        XCTAssertEqual(PadAction.action3.fKeyNumber, 15)
+        XCTAssertEqual(PadAction.reject.fKeyNumber, 17)
+        XCTAssertEqual(PadAction.action3.fKeyNumber, 18)
         XCTAssertEqual(PadAction.action4.fKeyNumber, 16)
     }
 
@@ -53,7 +53,7 @@ final class ModelTests: XCTestCase {
     // MARK: - SupportedApp
 
     func testAllSupportedAppsExist() {
-        XCTAssertEqual(SupportedApp.allCases.count, 5)
+        XCTAssertEqual(SupportedApp.allCases.count, 16)
     }
 
     func testNativeBundleIDsAreDefined() {
@@ -185,7 +185,6 @@ final class ModelTests: XCTestCase {
     }
 
     func testPresetCount() {
-        // 7 original + 5 new = 12
-        XCTAssertEqual(ButtonPreset.all.count, 12)
+        XCTAssertEqual(ButtonPreset.all.count, 14)
     }
 }

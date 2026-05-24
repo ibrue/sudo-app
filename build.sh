@@ -102,13 +102,29 @@ PLIST
 
 echo ""
 echo "[sudo] Code signing..."
-codesign --force --deep --sign - "$APP_DIR"
-echo "[sudo] Signed (ad-hoc)"
+SIGN_IDENTITY="${SUDO_CODESIGN_IDENTITY:--}"
+SIGN_REQUIREMENT="=designated => identifier \"$BUNDLE_ID\""
+codesign --force --deep --sign "$SIGN_IDENTITY" \
+    --identifier "$BUNDLE_ID" \
+    --requirements "$SIGN_REQUIREMENT" \
+    "$APP_DIR"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "[sudo] Signed (stable ad-hoc requirement for $BUNDLE_ID)"
+else
+    echo "[sudo] Signed ($SIGN_IDENTITY)"
+fi
 
-# Reset TCC entries so macOS re-trusts the new binary
-tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null || true
-tccutil reset AppleEvents "$BUNDLE_ID" 2>/dev/null || true
-echo "[sudo] Reset accessibility + automation trust (re-grant in settings)"
+# Do not reset TCC by default. Sudo is signed with a stable designated
+# requirement so iterative rebuilds can keep matching the user's existing
+# Accessibility grant. Set SUDO_RESET_TCC=1 when you intentionally need a
+# clean permission prompt.
+if [ "${SUDO_RESET_TCC:-0}" = "1" ]; then
+    tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null || true
+    tccutil reset ListenEvent   "$BUNDLE_ID" 2>/dev/null || true
+    tccutil reset PostEvent     "$BUNDLE_ID" 2>/dev/null || true
+    tccutil reset AppleEvents   "$BUNDLE_ID" 2>/dev/null || true
+    echo "[sudo] Reset accessibility + input-monitoring + automation trust (re-grant in settings)"
+fi
 
 echo ""
 echo "[sudo] Build successful: $APP_DIR"

@@ -56,6 +56,12 @@ final class FirmwareFlasher: ObservableObject {
     /// the pad is plugged in.
     @Published var hidConnected: Bool = false
 
+    /// Fired on the main queue whenever IOKit reports an Adafruit-VID
+    /// HID device match. SudoEngine subscribes to this to short-circuit
+    /// the 3-second permission-timer wait — the moment the pad
+    /// enumerates we want to re-check the event tap.
+    var onPadDetected: (() -> Void)?
+
     private var hidWatcher: IOHIDManager?
 
     /// Pinned CircuitPython release for the Raspberry Pi Pico (RP2040). We
@@ -187,7 +193,10 @@ final class FirmwareFlasher: ObservableObject {
         IOHIDManagerRegisterDeviceMatchingCallback(manager, { ctx, _, _, _ in
             guard let ctx = ctx else { return }
             let me = Unmanaged<FirmwareFlasher>.fromOpaque(ctx).takeUnretainedValue()
-            DispatchQueue.main.async { me.hidConnected = true }
+            DispatchQueue.main.async {
+                me.hidConnected = true
+                me.onPadDetected?()
+            }
         }, context)
         IOHIDManagerRegisterDeviceRemovalCallback(manager, { ctx, _, _, _ in
             guard let ctx = ctx else { return }
@@ -195,7 +204,7 @@ final class FirmwareFlasher: ObservableObject {
             DispatchQueue.main.async { me.refreshHIDState() }
         }, context)
 
-        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         if result != kIOReturnSuccess {
             print("[sudo] FirmwareFlasher.startHIDDetection: IOHIDManagerOpen returned \(result)")
@@ -373,12 +382,23 @@ final class FirmwareFlasher: ObservableObject {
     //
     // KEEP IN SYNC with sudo-supply/hardware/firmware/{boot,code}.py.
 
-    /// boot.py runs once at every cold boot, before code.py. It hides
-    /// the CIRCUITPY mass-storage drive (so macOS stops yelling about
-    /// "eject before unplug") *unless* button 1 (GP3) is held at the
-    /// moment of boot — that's our "flash mode" gesture.
+    /// boot.py runs once at every cold boot, before code.py. Three jobs:
+    ///
+    /// 1. Hide the CIRCUITPY mass-storage volume unless button 1 (GP3) is
+    ///    held during plug-in. macOS volume mount + Spotlight + Finder
+    ///    activity on every replug is real perceived lag.
+    /// 2. Leave LED ownership to code.py. CircuitPython pin objects
+    ///    should be kept alive by the program that needs the pin, so
+    ///    the visible ready LED is claimed once the main loop is ready.
+    /// 3. Stay silent over CDC. boot.py's stdout is captured to
+    ///    boot_out.txt, not the live CDC console — printing here just
+    ///    wastes startup time.
     private static let embeddedBootPy: String = #"""
-# sudo macropad — boot.py (hot-plug guard)
+# sudo macropad — boot.py (production v2, KNOWN-GOOD)
+#
+# Reverted from v3 — v3's usb_cdc.enable/usb_hid.enable calls broke the
+# HID descriptor on this CircuitPython 9.2.1 build, putting the pad in
+# a 10-second reset loop. This is the v2 boot.py that we verified works.
 
 import board
 import digitalio
@@ -387,7 +407,7 @@ import storage
 _btn = digitalio.DigitalInOut(board.GP3)
 _btn.direction = digitalio.Direction.INPUT
 _btn.pull = digitalio.Pull.UP
-# Active-low: button held → False → flash mode (drive stays visible).
+# Active-low: button held -> False -> flash mode (drive stays visible).
 _flash_mode = not _btn.value
 if not _flash_mode:
     storage.disable_usb_drive()
@@ -395,27 +415,76 @@ _btn.deinit()
 """#
 
     private static let embeddedCodePy: String = #"""
-# sudo macropad firmware — CircuitPython
+# sudo macropad firmware — CircuitPython (production v2)
 #
-# Buttons on GP0-GP3 (active-low, internal pull-up). Sends HID keystrokes;
-# the macOS app's HotkeyListener catches them and dispatches per-app actions.
+# Reliability-first rewrite. Targets the failure modes seen in testing:
 #
-# Defaults: ctrl+shift + F13/F18/F17/F16. F14/F15 are skipped because macOS
-# treats those as display-brightness keys even with modifiers held.
+#   - "Pad powers on but macOS doesn't see USB": CircuitPython's USB
+#     stack got wedged. Now: hardware watchdog (5s) hard-resets the
+#     chip if the main loop hangs, AND a secondary `usb_connected`
+#     check soft-fails after 10s of "powered but not enumerated" by
+#     calling microcontroller.reset() to force a fresh USB stack.
+#
+#   - "Buttons silently don't register": send_report() exceptions used
+#     to be swallowed. Now: tracked per-press, and after 3 consecutive
+#     failures we microcontroller.reset() since that's the only way
+#     to recover a stalled HID endpoint.
+#
+#   - "No visible 'I'm alive' signal": GP25 is now owned by code.py
+#     for the whole run and turns on after the firmware reaches the
+#     main loop. GP24 remains a short per-press flash so physical
+#     button detection is visible independently of the Mac app.
+#
+#   - "Auto-reload kicked in mid-press": autoreload was True for
+#     iteration. Production must be False so Spotlight / random FS
+#     events can't soft-reload us at runtime.
+#
+#   - "Loop spammed error logs": persistent exceptions in the main
+#     loop spammed CDC. Now: throttled to one log per unique error
+#     message, with backoff.
+#
+# To iterate: hold button 1 + plug to mount CIRCUITPY, edit this file,
+# then run `screen /dev/cu.usbmodem* 115200` (or use Sudo's pad
+# console viewer) to watch CDC. Autoreload stays OFF — you need a
+# Ctrl-D over REPL or a replug to apply changes.
+
+import supervisor
+print("## sudo-code.py-start t={}ms".format(supervisor.ticks_ms()))
+
+# --- Reliability: hardware watchdog ----------------------------------
+#
+# RP2040 ships with an 8.3s-max hardware watchdog. We arm it at 8s
+# (well below the limit, well above any legit main-loop latency) and
+# feed it every iteration. If the main loop ever hangs (CircuitPython
+# USB-stack lockup, infinite loop in a callback, you name it), the
+# chip hard-resets within 8s and USB re-enumerates from scratch.
+try:
+    import microcontroller
+    import watchdog
+    microcontroller.watchdog.timeout = 8
+    microcontroller.watchdog.mode = watchdog.WatchDogMode.RESET
+    _wdt = microcontroller.watchdog
+    print("## sudo-wdt-armed timeout=8s")
+except Exception as _e:  # noqa: BLE001
+    _wdt = None
+    print("## sudo-wdt-failed {}".format(_e))
+
+# Autoreload OFF in production. Spotlight / Finder file events can't
+# trigger a soft-reload mid-press now.
+supervisor.runtime.autoreload = False
 
 import board
 import digitalio
 import json
-import supervisor
 import time
 import usb_hid
 
+print("## sudo-imports-done t={}ms".format(supervisor.ticks_ms()))
 
-# CircuitPython 9.x exposes ticks_ms() but NOT ticks_diff() — that's a
-# MicroPython-ism. Roll our own wrap-safe version (counter wraps at 2**29).
+
+# --- Wrap-safe ticks_diff (CircuitPython 9 ticks_ms wraps at 2**29) ---
 _TICKS_PERIOD = 1 << 29
 _TICKS_HALFPERIOD = _TICKS_PERIOD // 2
-
 
 def ticks_diff(t1, t2):
     diff = (t1 - t2) & (_TICKS_PERIOD - 1)
@@ -424,18 +493,36 @@ def ticks_diff(t1, t2):
     return diff
 
 
+# --- HID device lookup -----------------------------------------------
+#
+# Direct-index first (always usb_hid.devices[0] in our config), with a
+# scan fallback in case the order ever surprises us.
 keyboard = None
 consumer = None
+try:
+    keyboard = usb_hid.devices[0]
+    if not (keyboard.usage_page == 0x01 and keyboard.usage == 0x06):
+        keyboard = None
+        for d in usb_hid.devices:
+            if d.usage_page == 0x01 and d.usage == 0x06:
+                keyboard = d
+                break
+except (IndexError, AttributeError):
+    keyboard = None
+
 for d in usb_hid.devices:
-    if d.usage_page == 0x01 and d.usage == 0x06:
-        keyboard = d
-    elif d.usage_page == 0x0C and d.usage == 0x01:
+    if d.usage_page == 0x0C and d.usage == 0x01:
         consumer = d
+        break
+
+print("## sudo-hid-enumerated t={}ms kbd={} cons={}".format(
+    supervisor.ticks_ms(),
+    "ok" if keyboard else "none",
+    "ok" if consumer else "none",
+))
 
 
-# Pin order = physical bottom → top (matches PadAction.physicalOrder on
-# the app side). The hardware wires GP3 to the bottom switch, so going
-# numeric here would flip the indexes from what the app shows.
+# --- Buttons (GP3=btn1 bottom .. GP0=btn4 top) -----------------------
 PINS = (board.GP3, board.GP2, board.GP1, board.GP0)
 buttons = []
 for pin in PINS:
@@ -444,49 +531,71 @@ for pin in PINS:
     p.pull = digitalio.Pull.UP
     buttons.append(p)
 
+print("## sudo-gpio-ready t={}ms".format(supervisor.ticks_ms()))
 
-# LED feedback on both under-glow pins. Each is claimed independently
-# inside try/except — if GP25 is already taken by CP's status indicator
-# the firmware just keeps GP24 going. Never crashes over an LED.
-LED_PINS = (board.GP24, board.GP25)
-LED_FLASH_MS = 120
-_led_off_at = 0
-_leds = []
-for _pin in LED_PINS:
+
+# --- LEDs ------------------------------------------------------------
+#
+# GP25 is the visible ready LED. It stays on once the firmware reaches
+# the main loop. GP24 is a short per-press flash. Keep both objects
+# alive for the whole run; relying on boot.py ownership across code.py
+# is not reliable.
+READY_LED_PIN = board.GP25
+PRESS_LED_PIN = board.GP24
+PRESS_LED_FLASH_MS = 160
+_ready_led = None
+_press_led = None
+_press_led_off_at = 0
+try:
+    _ready_led = digitalio.DigitalInOut(READY_LED_PIN)
+    _ready_led.direction = digitalio.Direction.OUTPUT
+    _ready_led.value = False
+    print("## sudo-leds-ready t={}ms gp25=ok".format(supervisor.ticks_ms()))
+except Exception as _e:  # noqa: BLE001
+    print("## sudo-leds-ready t={}ms gp25=err:{}".format(supervisor.ticks_ms(), _e))
+
+try:
+    _press_led = digitalio.DigitalInOut(PRESS_LED_PIN)
+    _press_led.direction = digitalio.Direction.OUTPUT
+    _press_led.value = False
+    print("## sudo-leds-press t={}ms gp24=ok".format(supervisor.ticks_ms()))
+except Exception as _e:  # noqa: BLE001
+    print("## sudo-leds-press t={}ms gp24=err:{}".format(supervisor.ticks_ms(), _e))
+
+
+def set_ready_led(on):
+    if _ready_led is None:
+        return
     try:
-        _l = digitalio.DigitalInOut(_pin)
-        _l.direction = digitalio.Direction.OUTPUT
-        _l.value = False
-        _leds.append(_l)
+        _ready_led.value = on
     except Exception:  # noqa: BLE001
         pass
 
 
-def flash_led():
-    global _led_off_at
-    if not _leds:
+def flash_press_led():
+    global _press_led_off_at
+    if _press_led is None:
         return
     try:
-        for _l in _leds:
-            _l.value = True
-        _led_off_at = supervisor.ticks_ms() + LED_FLASH_MS
+        _press_led.value = True
+        _press_led_off_at = supervisor.ticks_ms() + PRESS_LED_FLASH_MS
     except Exception:  # noqa: BLE001
         pass
 
 
-def update_led():
-    global _led_off_at
-    if not _leds or _led_off_at == 0:
+def update_press_led():
+    global _press_led_off_at
+    if _press_led is None or _press_led_off_at == 0:
         return
     try:
-        if ticks_diff(supervisor.ticks_ms(), _led_off_at) >= 0:
-            for _l in _leds:
-                _l.value = False
-            _led_off_at = 0
+        if ticks_diff(supervisor.ticks_ms(), _press_led_off_at) >= 0:
+            _press_led.value = False
+            _press_led_off_at = 0
     except Exception:  # noqa: BLE001
-        _led_off_at = 0
+        _press_led_off_at = 0
 
 
+# --- Config ----------------------------------------------------------
 DEFAULT_BUTTONS = [
     {"mode": "keycombo", "keycode": 0x68, "modifiers": 0x03},  # F13
     {"mode": "keycombo", "keycode": 0x6D, "modifiers": 0x03},  # F18
@@ -507,33 +616,59 @@ def load_config():
 
 
 config = load_config()
+print("## sudo-config-loaded t={}ms".format(supervisor.ticks_ms()))
+
+
+# --- HID send with failure tracking ----------------------------------
+#
+# Every send_report() call can fail if USB endpoint is stalled. We
+# track consecutive failures; after MAX_SEND_FAILS in a row, hard-reset
+# the chip since a wedged HID endpoint can't be unwedged without a USB
+# stack reinit. This is the second line of defence after the watchdog
+# (which only fires if the loop itself hangs).
+MAX_SEND_FAILS = 3
+_consecutive_send_fails = 0
+
+
+def _note_send_ok():
+    global _consecutive_send_fails
+    _consecutive_send_fails = 0
+
+
+def _note_send_fail(why):
+    global _consecutive_send_fails
+    _consecutive_send_fails += 1
+    print("## sudo-send-fail n={} why={}".format(_consecutive_send_fails, why))
+    if _consecutive_send_fails >= MAX_SEND_FAILS:
+        print("## sudo-hard-reset reason=hid-stalled")
+        # Brief sleep so the print actually goes out the wire.
+        try: time.sleep(0.05)
+        except Exception: pass
+        try: microcontroller.reset()
+        except Exception: pass
 
 
 def send_key_down(modifiers, keycode):
     if keyboard is None:
+        _note_send_fail("no-keyboard")
         return
     try:
         rpt = bytearray(8)
         rpt[0] = modifiers & 0xFF
         rpt[2] = keycode & 0xFF
         keyboard.send_report(rpt)
-    except Exception:  # noqa: BLE001
-        pass
+        _note_send_ok()
+    except Exception as e:  # noqa: BLE001
+        _note_send_fail("kd:{}".format(e))
 
 
 def send_key_up():
     if keyboard is None:
-        return
+        return  # release path doesn't trigger reset on its own
     try:
         keyboard.send_report(bytearray(8))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def send_key(modifiers, keycode):
-    send_key_down(modifiers, keycode)
-    time.sleep(0.015)
-    send_key_up()
+    except Exception as e:  # noqa: BLE001
+        _note_send_fail("ku:{}".format(e))
 
 
 def send_consumer(usage):
@@ -546,14 +681,12 @@ def send_consumer(usage):
         consumer.send_report(rpt)
         time.sleep(0.01)
         consumer.send_report(bytearray(2))
-    except Exception:  # noqa: BLE001
-        pass
+        _note_send_ok()
+    except Exception as e:  # noqa: BLE001
+        _note_send_fail("cons:{}".format(e))
 
 
 _CONSUMER = {16: 0xCD, 17: 0xB5, 18: 0xB6, 19: 0xB7, 20: 0xE2}
-
-# Per-button "currently held" tracker so we can release the key the
-# moment the user lets go (enables YouTube's hold-spacebar-for-2x).
 key_held = [False] * 4
 
 
@@ -570,19 +703,114 @@ def dispatch_press(i):
 
 
 def dispatch_release(i):
-    if key_held[i]:
-        send_key_up()
-        key_held[i] = False
+    send_key_up()
+    key_held[i] = False
 
 
+# --- Main loop -------------------------------------------------------
+#
+# debounce_until is seeded from the current ticks_ms() rather than 0.
+# Reason: ticks_diff is wrap-safe across the 2**29 ms period, which
+# means ticks_diff(now, 0) returns NEGATIVE whenever ticks_ms() is in
+# the upper half of the wrap window (anything past ~3.1 days of
+# uptime). The button loop below skips when ticks_diff < 0, so a
+# seed of 0 silently disables button detection for up to ~3 days
+# until ticks_ms() wraps back through zero. Seeding from the current
+# tick makes ticks_diff start at 0 (not negative) and the debounce
+# math stays correct for the actual button-press case.
 DEBOUNCE_MS = 20
 last_state = [True] * 4
-debounce_until = [0] * 4
+_now0 = supervisor.ticks_ms()
+debounce_until = [_now0] * 4
+
+print("## sudo-ready t={}ms".format(supervisor.ticks_ms()))
+set_ready_led(True)
+try:
+    print("## sudo-buttons-state t={}ms states={}".format(
+        supervisor.ticks_ms(),
+        "".join(["1" if b.value else "0" for b in buttons]),
+    ))
+except Exception as _e:  # noqa: BLE001
+    print("## sudo-buttons-state t={}ms err:{}".format(supervisor.ticks_ms(), _e))
+
+# USB connectivity watchdog. supervisor.runtime.usb_connected goes
+# False when the host stops responding (cable yank, host USB stack
+# crash). If we see it False for USB_GONE_RESET_MS and we're still
+# running (so power is good), force a hard reset to give CircuitPython
+# a fresh USB stack.
+USB_GONE_RESET_MS = 10_000
+_usb_last_seen = supervisor.ticks_ms()
+
+# Heartbeat — every 30s in steady state, with an early-boot burst so
+# the host gets a "I'm alive" line within ~200ms of plug-in.
+#
+# Why the burst exists: CircuitPython's USB CDC TX FIFO is small and not
+# buffered before the host opens the tty. Every boot print before the
+# host attaches gets discarded. The Mac side's `PadConsoleReader` opens
+# /dev/cu.usbmodem* 50ms-1.5s after HID enumeration, which is often
+# AFTER the boot prints have rolled out of the FIFO. Without the burst,
+# the first "## sudo-" line the host sees is the steady-state heartbeat
+# at t=30s — and the Mac-side event-tap refresh on `padReady` doesn't
+# fire until then, so buttons silently don't work for the first 30s
+# after plug-in. The burst at 200ms / 1s / 3s / 10s defeats that race
+# regardless of which side wins the open/print order.
+HEARTBEAT_MS = 30000
+_BOOT_BURST_MS = (200, 1000, 3000, 10000)
+_boot_t = supervisor.ticks_ms()
+_burst_index = 0
+_last_heartbeat = _boot_t
+
+# Error-log throttle: don't spam "loop-error" 10x/s if something is
+# persistently broken. Track last-logged message + min interval.
+_last_err_text = None
+_last_err_logged_at = 0
+ERR_LOG_THROTTLE_MS = 5000
+
+
+def log_error(text):
+    global _last_err_text, _last_err_logged_at
+    now = supervisor.ticks_ms()
+    if text == _last_err_text and ticks_diff(now, _last_err_logged_at) < ERR_LOG_THROTTLE_MS:
+        return
+    _last_err_text = text
+    _last_err_logged_at = now
+    try:
+        print("## sudo-loop-error {}".format(text))
+    except Exception:  # noqa: BLE001
+        pass
+
 
 while True:
     try:
         now = supervisor.ticks_ms()
-        update_led()
+
+        # Feed the hardware watchdog every loop. Skipping a feed
+        # means the loop is hung; the chip resets within timeout.
+        if _wdt is not None:
+            try:
+                _wdt.feed()
+            except Exception:  # noqa: BLE001
+                pass
+
+        # USB-stack health check. If host says "connected" we update
+        # the timestamp. If it's been gone too long while we're still
+        # running, hard reset to re-init USB.
+        try:
+            usb_ok = supervisor.runtime.usb_connected
+        except Exception:  # noqa: BLE001
+            usb_ok = True  # API missing -> don't reset on a false negative
+        if usb_ok:
+            _usb_last_seen = now
+        elif ticks_diff(now, _usb_last_seen) > USB_GONE_RESET_MS:
+            print("## sudo-hard-reset reason=usb-gone-{}ms".format(
+                ticks_diff(now, _usb_last_seen)))
+            try: time.sleep(0.05)
+            except Exception: pass
+            try: microcontroller.reset()
+            except Exception: pass
+
+        update_press_led()
+
         for i in range(4):
             if ticks_diff(now, debounce_until[i]) < 0:
                 continue
@@ -591,16 +819,27 @@ while True:
                 last_state[i] = state
                 debounce_until[i] = now + DEBOUNCE_MS
                 if not state:
-                    flash_led()
                     dispatch_press(i)
+                    flash_press_led()
+                    print("## sudo-press btn={} t={}ms".format(i + 1, now))
                 else:
                     dispatch_release(i)
+
+        if _burst_index < len(_BOOT_BURST_MS) and \
+                ticks_diff(now, _boot_t) >= _BOOT_BURST_MS[_burst_index]:
+            _burst_index += 1
+            _last_heartbeat = now
+            print("## sudo-alive t={}ms".format(now))
+        elif ticks_diff(now, _last_heartbeat) >= HEARTBEAT_MS:
+            _last_heartbeat = now
+            print("## sudo-alive t={}ms".format(now))
+
         time.sleep(0.005)
-    except Exception:  # noqa: BLE001
-        try:
-            time.sleep(0.1)
-        except Exception:  # noqa: BLE001
-            pass
+
+    except Exception as e:  # noqa: BLE001
+        log_error(str(e))
+        try: time.sleep(0.1)
+        except Exception: pass
 """#
 
     // MARK: - Copy helpers

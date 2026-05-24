@@ -1,16 +1,58 @@
 import SwiftUI
 import Cocoa
 
+/// Single owner for process-wide services. The `NSApplicationDelegate`
+/// instance is created by SwiftUI, so keeping services on a separate
+/// singleton avoids accidentally creating a second engine/event tap graph.
+final class SudoAppServices {
+    static let shared = SudoAppServices()
+
+    let engine = SudoEngine()
+    let updater = OTAUpdater()
+    let rebuilder = DevRebuilder()
+    let apiServer = LocalAPIServer()
+
+    private var started = false
+
+    private init() {}
+
+    func startIfNeeded() {
+        if started { return }
+        started = true
+        engine.start()
+        updater.startPeriodicChecks()
+        apiServer.start(engine: engine)
+    }
+}
+
+/// AppDelegate that triggers engine + service startup as soon as
+/// `applicationDidFinishLaunching` fires — i.e. immediately at app
+/// launch, BEFORE the user clicks the menu bar icon.
+final class SudoAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        SudoAppServices.shared.startIfNeeded()
+    }
+}
+
 @main
 struct SudoApp: App {
-    @StateObject private var engine = SudoEngine()
-    @StateObject private var updater = OTAUpdater()
-    @StateObject private var rebuilder = DevRebuilder()
-    @StateObject private var apiServer = LocalAPIServer()
-    @State private var hasLaunched = false
+    @NSApplicationDelegateAdaptor(SudoAppDelegate.self) private var appDelegate
+
+    @ObservedObject private var engine: SudoEngine
+    @ObservedObject private var updater: OTAUpdater
+    @ObservedObject private var rebuilder: DevRebuilder
+    @ObservedObject private var apiServer: LocalAPIServer
     @State private var dotFrame = 0
 
     private let dotTimer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
+
+    init() {
+        let services = SudoAppServices.shared
+        _engine = ObservedObject(initialValue: services.engine)
+        _updater = ObservedObject(initialValue: services.updater)
+        _rebuilder = ObservedObject(initialValue: services.rebuilder)
+        _apiServer = ObservedObject(initialValue: services.apiServer)
+    }
 
     /// Menu bar label. Stays compact (≤14 chars) so it doesn't crowd the
     /// system tray. Shows a transient tag of what the pad just did, then
@@ -50,12 +92,12 @@ struct SudoApp: App {
         MenuBarExtra {
             MenuBarView(engine: engine, updater: updater, rebuilder: rebuilder, apiServer: apiServer)
                 .onAppear {
-                    if !hasLaunched {
-                        hasLaunched = true
-                        engine.start()
-                        updater.startPeriodicChecks()
-                        apiServer.start(engine: engine)
-                    } else if !engine.isConnected {
+                    // Belt-and-suspenders: the AppDelegate already calls
+                    // startIfNeeded at applicationDidFinishLaunching, but
+                    // re-call here in case some launch path bypasses the
+                    // delegate. Idempotent.
+                    SudoAppServices.shared.startIfNeeded()
+                    if engine.isConnected == false {
                         // User opened the popover while the banner is showing —
                         // re-check immediately instead of waiting up to 3 s for
                         // the timer. Common case: user just granted Accessibility

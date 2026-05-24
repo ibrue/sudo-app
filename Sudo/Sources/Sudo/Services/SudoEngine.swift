@@ -93,6 +93,10 @@ final class SudoEngine: ObservableObject {
     private var autoApproveTimer: Timer?
     private var permissionCheckTimer: Timer?
     private var executingMacro = false
+    private var hasRequestedAccessibilityPrompt = false
+    private var hasStarted = false
+    private var workspaceObserverTokens: [NSObjectProtocol] = []
+    private var padReadyObserverToken: NSObjectProtocol?
 
     /// Trigger an action programmatically (for the test panel UI)
     func triggerAction(_ padAction: PadAction) {
@@ -102,6 +106,13 @@ final class SudoEngine: ObservableObject {
     }
 
     func start() {
+        guard !hasStarted else {
+            checkAndConnect()
+            PadConsoleReader.shared.startIfPossible()
+            return
+        }
+        hasStarted = true
+
         // Check permissions and try to start listener
         checkAndConnect()
 
@@ -139,9 +150,9 @@ final class SudoEngine: ObservableObject {
 
         // Event-driven app detection via NSWorkspace notifications
         let nc = NSWorkspace.shared.notificationCenter
-        nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+        workspaceObserverTokens.append(nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
             self?.updateDetectedApp()
-        }
+        })
         updateDetectedApp()
 
         // Auto-detect the macropad. Passive scan now (so the popover shows
@@ -153,13 +164,62 @@ final class SudoEngine: ObservableObject {
         // detection above. Boot.py hides CIRCUITPY in normal use, so
         // the mount notification never fires for a working pad — but
         // the pad still enumerates as a HID keyboard, which IOKit sees.
+        FirmwareFlasher.shared.onPadDetected = { [weak self] in
+            // Pad enumerated as Adafruit HID — re-check the event tap
+            // right now instead of waiting up to 3s for the permission
+            // timer. tapCreate consults TCC at call time, so this picks
+            // up a freshly-granted accessibility grant immediately.
+            DebugLogger.shared.log("pad detected via IOKit HID — re-checking event tap")
+            PadConsoleReader.diagLog("[mac] hid-add (adafruit vid)")
+            self?.checkAndConnect()
+            // The CDC tty appears in /dev a variable amount of time
+            // AFTER the HID interface enumerates (macOS attaches the
+            // serial driver second). We measured ~1.5s gap in practice.
+            // Tight burst: try every 20ms for 2 seconds. Cheap, and
+            // brings worst-case "pad ready" → "Sudo reading CDC" from
+            // 1.5s down to <50ms.
+            self?.startCDCAttachBurst()
+        }
         FirmwareFlasher.shared.startHIDDetection()
-        nc.addObserver(forName: NSWorkspace.didMountNotification, object: nil, queue: .main) { _ in
+        workspaceObserverTokens.append(nc.addObserver(forName: NSWorkspace.didMountNotification, object: nil, queue: .main) { _ in
             FirmwareFlasher.shared.refreshDeviceState()
-        }
-        nc.addObserver(forName: NSWorkspace.didUnmountNotification, object: nil, queue: .main) { _ in
+            // Re-open CDC if a new tty mount appeared (pad just plugged in).
+            PadConsoleReader.shared.startIfPossible()
+        })
+        workspaceObserverTokens.append(nc.addObserver(forName: NSWorkspace.didUnmountNotification, object: nil, queue: .main) { _ in
             FirmwareFlasher.shared.refreshDeviceState()
+        })
+
+        // Auto-start the CDC reader so we're listening for the firmware's
+        // "## sudo-ready" sentinel the moment the pad enters its main
+        // loop. The reader was previously manual (Settings → Developer);
+        // moving it to launch + USB-mount-notification + a 1s safety
+        // retry means the popover updates within ~100ms of the pad
+        // becoming ready, vs. up to 3s of polling latency.
+        PadConsoleReader.shared.startIfPossible()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            PadConsoleReader.shared.startIfPossible()
         }
+
+        // React to the firmware READY sentinel: refresh the event tap +
+        // ping the popover so the "connected" state is correct.
+        padReadyObserverToken = NotificationCenter.default.addObserver(
+            forName: .padReady, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            DebugLogger.shared.log("pad reported ready over CDC — refreshing tap")
+            PadConsoleReader.diagLog("[mac] padReady-fired → refresh tap + checkAndConnect")
+            if self.hotkeyListener.isListening {
+                self.hotkeyListener.restart()
+            }
+            self.checkAndConnect()
+        }
+
+        // 500ms quick-poll for the first 30s after launch. Belt-and-
+        // suspenders fallback in case both IOKit HID and the CDC ready
+        // signal misfire on some Mac configs. Self-invalidates after
+        // 60 ticks so we don't burn battery forever.
+        startQuickPollTimer()
 
         PluginManager.shared.loadPlugins()
         startAutoApproveTimer()
@@ -168,6 +228,70 @@ final class SudoEngine: ObservableObject {
         PadCommunicator.shared.sendState(.idle)
 
         SudoTelemetry.shared.trackLaunch()
+    }
+
+    /// Fires every 20ms for 2 seconds after a hid-add event, then
+    /// stops. The cu.usbmodem* device file appears in /dev a variable
+    /// 50ms–1.5s after the HID interface enumerates (macOS attaches
+    /// the IOSerialBSDClient driver to the CDC ACM endpoint second).
+    /// 20ms polling means we attach the tty within ~20ms of it
+    /// appearing — vs. ~500ms with only the steady-state quick-poll.
+    private var cdcBurstTimer: Timer?
+    private var cdcBurstTicks = 0
+    private func startCDCAttachBurst() {
+        cdcBurstTimer?.invalidate()
+        cdcBurstTicks = 0
+        // First attempt immediately — common case is the tty is already
+        // there by the time the HID-add callback fires.
+        PadConsoleReader.shared.startIfPossible()
+        let t = Timer(timeInterval: 0.02, repeats: true) { [weak self] timer in
+            guard let self = self else { timer.invalidate(); return }
+            self.cdcBurstTicks += 1
+            // Stop after 100 ticks (2 s) or once the reader is connected.
+            if self.cdcBurstTicks >= 100 || PadConsoleReader.shared.isConnected {
+                timer.invalidate()
+                self.cdcBurstTimer = nil
+                if PadConsoleReader.shared.isConnected {
+                    PadConsoleReader.diagLog("[mac] cdc-burst connected after \(self.cdcBurstTicks * 20)ms")
+                }
+                return
+            }
+            PadConsoleReader.shared.startIfPossible()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        cdcBurstTimer = t
+    }
+
+    /// Fires every 500ms for the first 30s after launch, then stops.
+    /// Catches the case where neither the IOKit HID add callback nor
+    /// the CDC READY sentinel fires (e.g. pad enumerates as a HID
+    /// device the OS hasn't fully classified yet, CDC tty isn't
+    /// mounted, etc.). Cheap insurance.
+    private var quickPollTimer: Timer?
+    private var quickPollTicks = 0
+    private func startQuickPollTimer() {
+        quickPollTimer?.invalidate()
+        quickPollTicks = 0
+        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] timer in
+            guard let self = self else { timer.invalidate(); return }
+            self.quickPollTicks += 1
+            // Stop after 30s OR once we're connected — the 3s permission
+            // timer takes over from there.
+            if self.quickPollTicks >= 60 || self.isConnected {
+                timer.invalidate()
+                self.quickPollTimer = nil
+                return
+            }
+            if !self.hotkeyListener.isListening {
+                self.checkAndConnect()
+            } else if !self.isConnected {
+                DispatchQueue.main.async { self.isConnected = true }
+            }
+            // Also poke the CDC reader in case the tty appeared between ticks.
+            PadConsoleReader.shared.startIfPossible()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        quickPollTimer = t
     }
 
     /// Check permissions and (re)start the hotkey listener if possible.
@@ -197,6 +321,23 @@ final class SudoEngine: ObservableObject {
             }
         }
         let listening = hotkeyListener.isListening
+
+        // If the tap couldn't be created, prompt the user to grant
+        // Accessibility via the macOS system dialog. We use
+        // AXIsProcessTrustedWithOptions purely for its side effect —
+        // its return value caches per-process (the bug fixed in
+        // febbd4f) so we ignore it and let `tapCreate` above remain
+        // the source of truth for granted state. macOS only shows
+        // the dialog at most once per app installation, so calling
+        // this once per process when ungranted is safe — we still
+        // gate on a flag to avoid re-firing on every 3 s tick.
+        if !listening && !hasRequestedAccessibilityPrompt {
+            hasRequestedAccessibilityPrompt = true
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(options)
+            DebugLogger.shared.log("accessibility prompt requested")
+        }
+
         DebugLogger.shared.log("permission check: tap=\(listening)")
 
         DispatchQueue.main.async {
@@ -209,14 +350,25 @@ final class SudoEngine: ObservableObject {
     }
 
     func stop() {
+        hasStarted = false
         hotkeyListener.stop()
         isConnected = false
         autoApproveTimer?.invalidate()
         autoApproveTimer = nil
         permissionCheckTimer?.invalidate()
         permissionCheckTimer = nil
+        quickPollTimer?.invalidate()
+        quickPollTimer = nil
+        cdcBurstTimer?.invalidate()
+        cdcBurstTimer = nil
+        workspaceObserverTokens.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        workspaceObserverTokens.removeAll()
+        if let token = padReadyObserverToken {
+            NotificationCenter.default.removeObserver(token)
+            padReadyObserverToken = nil
+        }
+        FirmwareFlasher.shared.onPadDetected = nil
         PadCommunicator.shared.disconnect()
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     // MARK: - Auto-Approve
@@ -444,6 +596,20 @@ final class SudoEngine: ObservableObject {
         // the press registered, before any pipeline work runs.
         PadCommunicator.shared.sendState(.buttonPressed)
 
+        // INSTANT feedback that Sudo received the press: short Tink sound
+        // (subtle), popover status update, menu-bar label flip to processing.
+        // Without this, an aiSearch action that finds no button just silently
+        // times out after ~9s — the user perceives "Sudo isn't working" even
+        // though the press registered. Now they hear/see acknowledgment in
+        // <50ms regardless of what the action pipeline ends up doing.
+        if SudoSettings.shared.soundEnabled {
+            NSSound(named: "Tink")?.play()
+        }
+        DispatchQueue.main.async {
+            self.lastResult = .processing
+            self.lastAction = "received: \(action.displayName.lowercased())"
+        }
+
         // Log every accepted action so the Debug Console shows the
         // full chain (pad input → action triggered → result). Without
         // this the only entries were debounces and macro starts, so
@@ -468,6 +634,7 @@ final class SudoEngine: ObservableObject {
         let isSudoFrontmost = frontApp?.bundleIdentifier == Bundle.main.bundleIdentifier
 
         log.log("button \(action.buttonNumber) (\(action.displayName.lowercased())) → mode: \(mode.rawValue), front: \(frontAppName) [\(frontBID)]")
+        PadConsoleReader.diagLog("[mac] action-dispatch btn=\(action.buttonNumber) mode=\(mode.rawValue) front=\(frontAppName)")
 
         if mode == .keyCombo, let kc = SudoSettings.shared.keyCombo(for: action) {
             // Resolve the target app — use saved bundleID when Sudo is frontmost
@@ -710,6 +877,7 @@ final class SudoEngine: ObservableObject {
         }
 
         print("[sudo] \(success ? "OK" : "FAIL"): \(action.displayName) via \(method)")
+        PadConsoleReader.diagLog("[mac] action-\(success ? "ok" : "fail") btn=\(action.buttonNumber) method=\(method)")
     }
 
     /// Run work with a timeout — returns nil if timed out
