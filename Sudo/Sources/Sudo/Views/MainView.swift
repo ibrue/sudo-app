@@ -76,11 +76,16 @@ struct MainView: View {
         Menu {
             Button("settings…") { openSettings(.general) }
                 .keyboardShortcut(",", modifiers: [.command])
+            Button("device & firmware…") { openSettings(.device) }
             Button("edit buttons") { openSettings(.buttons) }
             Button("edit macros") { openSettings(.macros) }
             Divider()
-            Button("flash firmware to pad…") {
-                FirmwareFlasher.shared.flashFirmwareAndConfig(settings: settings)
+            if flasher.canStartFlash {
+                Button("flash pad now") {
+                    FirmwareFlasher.shared.flashFirmwareAndConfig(settings: settings)
+                }
+            } else {
+                Button("flash instructions…") { openSettings(.device) }
             }
             Divider()
             if updater.updateAvailable {
@@ -127,14 +132,45 @@ struct MainView: View {
             }
 
             HStack(spacing: 6) {
-                Image(systemName: deviceIsPresent ? "keyboard.fill" : "keyboard")
+                Image(systemName: deviceStatusIcon)
                     .symbolRenderingMode(.hierarchical)
                     .font(.system(size: 10))
-                    .foregroundStyle(deviceIsPresent ? SudoTheme.accent : .secondary)
+                    .foregroundStyle(deviceStatusColor)
                 Text(deviceStatusText)
                     .font(SudoTheme.caption)
-                    .foregroundStyle(deviceIsPresent ? SudoTheme.accent : .secondary)
+                    .foregroundStyle(deviceStatusColor)
                     .lineLimit(1)
+                Spacer(minLength: 4)
+                if flasher.canStartFlash {
+                    Button("flash") { openSettings(.device) }
+                        .font(SudoTheme.caption)
+                        .foregroundStyle(SudoTheme.accent)
+                        .buttonStyle(.plain)
+                }
+            }
+
+            if case .flashing = flasher.state {
+                HStack(spacing: 6) {
+                    ProgressView(value: flasher.progress)
+                        .controlSize(.small)
+                        .frame(width: 70)
+                        .tint(SudoTheme.accent)
+                    Text(flasher.phase)
+                        .font(SudoTheme.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            } else if case .failed(let message) = flasher.state {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(SudoTheme.error)
+                    Text(message)
+                        .font(SudoTheme.caption)
+                        .foregroundStyle(SudoTheme.error)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
 
             // Line 2: last action + relative timestamp
@@ -180,10 +216,33 @@ struct MainView: View {
     }
 
     private var deviceIsPresent: Bool {
-        flasher.hidConnected || padConsole.isConnected
+        switch flasher.state {
+        case .running, .flashMode, .bootloader, .flashing, .success(_):
+            return true
+        default:
+            return flasher.hidConnected || padConsole.isConnected
+        }
     }
 
     private var deviceStatusText: String {
+        switch flasher.state {
+        case .flashMode:
+            return "pad in flash mode"
+        case .bootloader:
+            return "pad in BOOTSEL"
+        case .flashing:
+            return "flashing pad"
+        case .success(_):
+            return "pad flashed"
+        case .failed(_):
+            return "pad flash failed"
+        case .running:
+            return padConsole.padReady ? "pad connected and ready" : "pad connected"
+        case .detectingDevice:
+            return "scanning for pad"
+        case .idle, .noDevice:
+            break
+        }
         if flasher.hidConnected {
             return padConsole.padReady ? "pad connected and ready" : "pad connected"
         }
@@ -191,6 +250,29 @@ struct MainView: View {
             return "pad console connected"
         }
         return "pad not detected"
+    }
+
+    private var deviceStatusIcon: String {
+        switch flasher.state {
+        case .flashMode: return "externaldrive.fill"
+        case .bootloader: return "arrow.down.circle.fill"
+        case .flashing: return "bolt.horizontal.circle.fill"
+        case .success(_): return "checkmark.circle.fill"
+        case .failed(_): return "xmark.circle.fill"
+        case .detectingDevice: return "magnifyingglass.circle.fill"
+        default: return deviceIsPresent ? "keyboard.fill" : "keyboard"
+        }
+    }
+
+    private var deviceStatusColor: Color {
+        switch flasher.state {
+        case .bootloader, .detectingDevice:
+            return SudoTheme.warning
+        case .failed(_):
+            return SudoTheme.error
+        default:
+            return deviceIsPresent ? SudoTheme.accent : .secondary
+        }
     }
 
     private var modePill: some View {

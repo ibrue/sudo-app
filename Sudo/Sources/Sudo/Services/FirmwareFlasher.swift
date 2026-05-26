@@ -6,46 +6,50 @@ import IOKit.hid
 ///
 /// The pad runs CircuitPython. The flash flow has two paths:
 ///
-/// 1. **`CIRCUITPY` is mounted** — the device is already running our firmware.
-///    We just write `code.py` and `config.json` directly to the volume.
-///    CircuitPython auto-reloads on save, so changes are live in <1 s. No
-///    BOOTSEL, no UF2, no reboot. Most common path after the very first
-///    flash.
+/// 1. **`CIRCUITPY` is mounted** — the device is in flash mode. We write
+///    the bundled `boot.py`, `code.py`, `sudo_leds.py`, and generated
+///    `config.json` directly to the volume, then ask the user to replug.
 ///
 /// 2. **`RPI-RP2` is mounted** — the device is in BOOTSEL (blank board, or
 ///    user just held the BOOTSEL switch). We flash the CircuitPython UF2
 ///    onto it, wait for it to reboot and re-enumerate as `CIRCUITPY`, then
 ///    fall through to path 1.
 ///
-/// 3. **Neither is mounted** — we ask the user to plug in the pad while
-///    holding BOOTSEL.
+/// 3. **Neither is mounted** — HID detection may still report a running pad
+///    because production `boot.py` hides the mass-storage drive. To flash,
+///    the user re-plugs while holding button 1.
 ///
-/// The CircuitPython UF2 is downloaded once from the Adafruit CDN and cached
-/// in `~/Library/Application Support/Sudo/Firmware/` — same place the old C
-/// firmware path used.
+/// The CircuitPython UF2 is bundled for offline first flash. If a development
+/// build omits it, the app falls back to the existing download/cache path.
 final class FirmwareFlasher: ObservableObject {
     static let shared = FirmwareFlasher()
 
     enum FlashState: Equatable {
         case idle
+        case noDevice
+        case running
         case detectingDevice
-        case readyForConfig(circuitpyPath: String)   // device is running CP, just write config
-        case readyForFirmware(rpiPath: String)       // device is in BOOTSEL, needs CP UF2 first
+        case flashMode(circuitpyPath: String)        // CIRCUITPY visible, ready to write firmware/config
+        case bootloader(rpiPath: String)             // RPI-RP2 visible, needs CP UF2 first
         case flashing
-        case success
-        case error(message: String)
+        case success(message: String)
+        case failed(message: String)
     }
 
-    /// Coarse lifecycle phase used by the UI's 3-step indicator.
-    /// `.reboot` covers BOOTSEL detection + UF2 copy. `.write` is the
-    /// `code.py` / `config.json` write to CIRCUITPY. `.verify` is the brief
-    /// settle period after the write before we report success.
-    enum FlashStep: Int { case reboot = 0, write = 1, verify = 2 }
+    /// Coarse lifecycle phase used by progress UIs.
+    enum FlashStep: Int {
+        case detect = 0
+        case installCircuitPython = 1
+        case waitForCircuitPy = 2
+        case writeFirmware = 3
+        case writeConfig = 4
+        case verify = 5
+    }
 
     @Published var state: FlashState = .idle
     @Published var phase: String = ""
     @Published var progress: Double = 0
-    @Published var step: FlashStep = .reboot
+    @Published var step: FlashStep = .detect
 
     /// True when an Adafruit USB HID device is currently attached. Set
     /// by an IOKit matching subscription, so it tracks plug/unplug
@@ -63,6 +67,8 @@ final class FirmwareFlasher: ObservableObject {
     var onPadDetected: (() -> Void)?
 
     private var hidWatcher: IOHIDManager?
+    private let assetProvider: FirmwareAssetProviding
+    private let volumesPath: String
 
     /// Pinned CircuitPython release for the Raspberry Pi Pico (RP2040). We
     /// don't track latest because Adafruit releases occasionally rename
@@ -75,6 +81,14 @@ final class FirmwareFlasher: ObservableObject {
     private let unmountTimeoutSeconds: Double = 30
     private let pollIntervalSeconds: Double = 0.25
 
+    init(
+        assetProvider: FirmwareAssetProviding = DefaultFirmwareAssetProvider(),
+        volumesPath: String = "/Volumes"
+    ) {
+        self.assetProvider = assetProvider
+        self.volumesPath = volumesPath
+    }
+
     // MARK: - Detection
 
     /// Look for the device. Tries CIRCUITPY first (no BOOTSEL needed), then
@@ -84,30 +98,32 @@ final class FirmwareFlasher: ObservableObject {
             self.state = .detectingDevice
             self.phase = "looking for sudo macropad…"
             self.progress = 0
-            self.step = .reboot
+            self.step = .detect
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
             if let cp = self.findCircuitPyVolume() {
                 DispatchQueue.main.async {
-                    self.state = .readyForConfig(circuitpyPath: cp)
-                    self.phase = "device running CircuitPython — ready for config"
+                    self.state = .flashMode(circuitpyPath: cp)
+                    self.phase = "CIRCUITPY is mounted — ready to flash"
                 }
                 return
             }
 
             if let rpi = self.findBootloaderVolume() {
                 DispatchQueue.main.async {
-                    self.state = .readyForFirmware(rpiPath: rpi)
+                    self.state = .bootloader(rpiPath: rpi)
                     self.phase = "device in BOOTSEL — ready to install CircuitPython"
                 }
                 return
             }
 
             DispatchQueue.main.async {
-                self.state = .idle
-                self.phase = "no device — plug in the macropad (hold BOOTSEL on first install)"
+                self.state = self.hidConnected ? .running : .noDevice
+                self.phase = self.hidConnected
+                    ? "pad connected and running — hold button 1 while replugging to flash"
+                    : "no device — plug in the macropad (hold BOOTSEL on first install)"
             }
         }
     }
@@ -126,17 +142,19 @@ final class FirmwareFlasher: ObservableObject {
             let rpi = self.findBootloaderVolume()
             DispatchQueue.main.async {
                 switch self.state {
-                case .flashing, .detectingDevice, .success, .error:
+                case .flashing, .detectingDevice, .success(_), .failed(_):
                     return
                 default:
                     break
                 }
                 if let cp = cp {
-                    self.state = .readyForConfig(circuitpyPath: cp)
+                    self.state = .flashMode(circuitpyPath: cp)
                 } else if let rpi = rpi {
-                    self.state = .readyForFirmware(rpiPath: rpi)
+                    self.state = .bootloader(rpiPath: rpi)
+                } else if self.hidConnected {
+                    self.state = .running
                 } else {
-                    self.state = .idle
+                    self.state = .noDevice
                 }
             }
         }
@@ -162,7 +180,7 @@ final class FirmwareFlasher: ObservableObject {
             self.state = .idle
             self.phase = ""
             self.progress = 0
-            self.step = .reboot
+            self.step = .detect
         }
     }
 
@@ -195,6 +213,11 @@ final class FirmwareFlasher: ObservableObject {
             let me = Unmanaged<FirmwareFlasher>.fromOpaque(ctx).takeUnretainedValue()
             DispatchQueue.main.async {
                 me.hidConnected = true
+                if case .idle = me.state {
+                    me.state = .running
+                } else if case .noDevice = me.state {
+                    me.state = .running
+                }
                 me.onPadDetected?()
             }
         }, context)
@@ -223,11 +246,30 @@ final class FirmwareFlasher: ObservableObject {
         guard let manager = hidWatcher else { return }
         let attached = (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>) ?? []
         hidConnected = !attached.isEmpty
+        if hidConnected {
+            if case .idle = state { state = .running }
+            if case .noDevice = state { state = .running }
+        } else if case .running = state {
+            state = .noDevice
+        }
     }
 
     // MARK: - Implementation
 
     private func runFlash(settings: SudoSettings) {
+        if isFlashing {
+            updatePhase("flash already in progress…")
+            return
+        }
+
+        do {
+            _ = try assetProvider.padFirmwareFiles()
+            _ = try SudoConfigJSON.generate(from: settings)
+        } catch {
+            setError("preflight failed: \(error.localizedDescription)")
+            return
+        }
+
         // Re-detect each time so we don't act on stale state.
         if let cp = findCircuitPyVolume() {
             writeConfigToCircuitPy(path: cp, settings: settings)
@@ -240,19 +282,29 @@ final class FirmwareFlasher: ObservableObject {
         setError("no device — plug in the macropad with BOOTSEL held (first time only)")
     }
 
-    /// Path 1: CIRCUITPY is mounted, write boot.py + code.py + config.json.
+    private var isFlashing: Bool {
+        DispatchQueue.main.sync {
+            if case .flashing = state { return true }
+            return false
+        }
+    }
+
+    /// Path 1: CIRCUITPY is mounted, write boot.py + code.py + sudo_leds.py + config.json.
     ///
     /// boot.py is what makes the firmware hot-pluggable: it hides
     /// CIRCUITPY in normal use (no more "eject before unplug" warning),
     /// only re-exposes the drive when the user holds button 1 while
     /// plugging in. Pure HID otherwise.
     private func writeConfigToCircuitPy(path: String, settings: SudoSettings) {
-        beginFlashing(label: "writing firmware…", at: .write)
+        beginFlashing(label: "writing firmware…", at: .writeFirmware)
         do {
-            let metaDst = URL(fileURLWithPath: path).appendingPathComponent(".metadata_never_index")
-            let bootDst = URL(fileURLWithPath: path).appendingPathComponent("boot.py")
-            let codeDst = URL(fileURLWithPath: path).appendingPathComponent("code.py")
-            let configDst = URL(fileURLWithPath: path).appendingPathComponent("config.json")
+            let volume = try preflightCircuitPyVolume(path)
+            let firmware = try assetProvider.padFirmwareFiles()
+            let metaDst = volume.appendingPathComponent(".metadata_never_index")
+            let bootDst = volume.appendingPathComponent("boot.py")
+            let codeDst = volume.appendingPathComponent("code.py")
+            let ledsDst = volume.appendingPathComponent("sudo_leds.py")
+            let configDst = volume.appendingPathComponent("config.json")
             let configData = try SudoConfigJSON.generate(from: settings)
 
             // Spotlight indexing CIRCUITPY was the culprit behind the
@@ -268,22 +320,25 @@ final class FirmwareFlasher: ObservableObject {
             updateProgress(0.05, phase: "tagging volume to skip Spotlight…")
             try Data().write(to: metaDst, options: .atomic)
 
-            updateProgress(0.20, phase: "writing boot.py (hot-plug guard)…")
-            try Self.embeddedBootPy.write(to: bootDst, atomically: true, encoding: .utf8)
-            updateProgress(0.50, phase: "writing code.py…")
-            try Self.embeddedCodePy.write(to: codeDst, atomically: true, encoding: .utf8)
-            updateProgress(0.80, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
+            updateProgress(0.18, phase: "writing boot.py…")
+            try copyOverwriting(src: firmware.bootPy, dst: bootDst)
+            updateProgress(0.38, phase: "writing code.py…")
+            try copyOverwriting(src: firmware.codePy, dst: codeDst)
+            updateProgress(0.58, phase: "writing sudo_leds.py…")
+            try copyOverwriting(src: firmware.ledsPy, dst: ledsDst)
+
+            DispatchQueue.main.async { self.step = .writeConfig }
+            updateProgress(0.78, phase: "writing config.json (\(settings.appMode.rawValue) mode)…")
             try writeOverwriting(data: configData, to: configDst)
 
             DispatchQueue.main.async { self.step = .verify }
-            // The new boot.py disables auto-reload, so we don't wait
-            // for CircuitPython to pick the files up — the user
-            // unplugs/replugs and the new firmware runs cleanly from
-            // a fresh boot. Quick settle to let the FAT writes flush.
-            updateProgress(0.95, phase: "settling…")
+            updateProgress(0.92, phase: "verifying files…")
+            try verifyCircuitPyWrite(volume: volume, expectedFiles: ["boot.py", "code.py", "sudo_leds.py", "config.json"])
+
+            updateProgress(0.97, phase: "settling…")
             Thread.sleep(forTimeInterval: 0.3)
 
-            finishSuccess(label: "flashed — unplug + replug to start (hold button 1 again to re-flash)")
+            finishSuccess(label: "flashed — unplug + replug normally to start (hold button 1 to re-flash)")
         } catch {
             setError("config write failed: \(error.localizedDescription)")
         }
@@ -292,14 +347,15 @@ final class FirmwareFlasher: ObservableObject {
     /// Path 2: RPI-RP2 is mounted. Flash CircuitPython UF2 to it, wait for
     /// CIRCUITPY to enumerate, then write config.
     private func installCircuitPythonThenConfig(rpiPath: String, settings: SudoSettings) {
-        beginFlashing(label: "preparing CircuitPython…", at: .reboot)
+        beginFlashing(label: "preparing CircuitPython…", at: .installCircuitPython)
         do {
+            _ = try preflightBootloaderVolume(rpiPath)
             let cpURL = try locateOrDownloadCircuitPython()
             updatePhase("flashing CircuitPython \(Self.circuitPythonVersion) to RPI-RP2…")
             let cpDst = URL(fileURLWithPath: rpiPath).appendingPathComponent("circuitpython.uf2")
             try copyToBootloader(src: cpURL, dst: cpDst, label: "writing CircuitPython")
 
-            DispatchQueue.main.async { self.step = .write }
+            DispatchQueue.main.async { self.step = .waitForCircuitPy }
             updatePhase("waiting for CIRCUITPY to mount…")
             guard let cpPath = waitForCircuitPyMount(timeout: 20) else {
                 throw NSError(domain: "FirmwareFlasher", code: 2, userInfo: [
@@ -316,6 +372,9 @@ final class FirmwareFlasher: ObservableObject {
     // MARK: - CircuitPython UF2 sourcing
 
     private func locateOrDownloadCircuitPython() throws -> URL {
+        if let bundled = assetProvider.circuitPythonUF2(version: Self.circuitPythonVersion) {
+            return bundled
+        }
         // Bundled (most reliable, but ships ~1 MB extra in .app)
         if let bundleURL = Bundle.main.url(forResource: "circuitpython-pico", withExtension: "uf2") {
             return bundleURL
@@ -378,469 +437,65 @@ final class FirmwareFlasher: ObservableObject {
         return try result.get()
     }
 
-    // MARK: - Embedded firmware
-    //
-    // KEEP IN SYNC with sudo-supply/hardware/firmware/{boot,code}.py.
-
-    /// boot.py runs once at every cold boot, before code.py. Three jobs:
-    ///
-    /// 1. Hide the CIRCUITPY mass-storage volume unless button 1 (GP3) is
-    ///    held during plug-in. macOS volume mount + Spotlight + Finder
-    ///    activity on every replug is real perceived lag.
-    /// 2. Leave LED ownership to code.py. CircuitPython pin objects
-    ///    should be kept alive by the program that needs the pin, so
-    ///    the visible ready LED is claimed once the main loop is ready.
-    /// 3. Stay silent over CDC. boot.py's stdout is captured to
-    ///    boot_out.txt, not the live CDC console — printing here just
-    ///    wastes startup time.
-    private static let embeddedBootPy: String = #"""
-# sudo macropad — boot.py (production v2, KNOWN-GOOD)
-#
-# Reverted from v3 — v3's usb_cdc.enable/usb_hid.enable calls broke the
-# HID descriptor on this CircuitPython 9.2.1 build, putting the pad in
-# a 10-second reset loop. This is the v2 boot.py that we verified works.
-
-import board
-import digitalio
-import storage
-
-_btn = digitalio.DigitalInOut(board.GP3)
-_btn.direction = digitalio.Direction.INPUT
-_btn.pull = digitalio.Pull.UP
-# Active-low: button held -> False -> flash mode (drive stays visible).
-_flash_mode = not _btn.value
-if not _flash_mode:
-    storage.disable_usb_drive()
-_btn.deinit()
-"""#
-
-    private static let embeddedCodePy: String = #"""
-# sudo macropad firmware — CircuitPython (production v2)
-#
-# Reliability-first rewrite. Targets the failure modes seen in testing:
-#
-#   - "Pad powers on but macOS doesn't see USB": CircuitPython's USB
-#     stack got wedged. Now: hardware watchdog (5s) hard-resets the
-#     chip if the main loop hangs, AND a secondary `usb_connected`
-#     check soft-fails after 10s of "powered but not enumerated" by
-#     calling microcontroller.reset() to force a fresh USB stack.
-#
-#   - "Buttons silently don't register": send_report() exceptions used
-#     to be swallowed. Now: tracked per-press, and after 3 consecutive
-#     failures we microcontroller.reset() since that's the only way
-#     to recover a stalled HID endpoint.
-#
-#   - "No visible 'I'm alive' signal": GP25 is now owned by code.py
-#     for the whole run and turns on after the firmware reaches the
-#     main loop. GP24 remains a short per-press flash so physical
-#     button detection is visible independently of the Mac app.
-#
-#   - "Auto-reload kicked in mid-press": autoreload was True for
-#     iteration. Production must be False so Spotlight / random FS
-#     events can't soft-reload us at runtime.
-#
-#   - "Loop spammed error logs": persistent exceptions in the main
-#     loop spammed CDC. Now: throttled to one log per unique error
-#     message, with backoff.
-#
-# To iterate: hold button 1 + plug to mount CIRCUITPY, edit this file,
-# then run `screen /dev/cu.usbmodem* 115200` (or use Sudo's pad
-# console viewer) to watch CDC. Autoreload stays OFF — you need a
-# Ctrl-D over REPL or a replug to apply changes.
-
-import supervisor
-print("## sudo-code.py-start t={}ms".format(supervisor.ticks_ms()))
-
-# --- Reliability: hardware watchdog ----------------------------------
-#
-# RP2040 ships with an 8.3s-max hardware watchdog. We arm it at 8s
-# (well below the limit, well above any legit main-loop latency) and
-# feed it every iteration. If the main loop ever hangs (CircuitPython
-# USB-stack lockup, infinite loop in a callback, you name it), the
-# chip hard-resets within 8s and USB re-enumerates from scratch.
-try:
-    import microcontroller
-    import watchdog
-    microcontroller.watchdog.timeout = 8
-    microcontroller.watchdog.mode = watchdog.WatchDogMode.RESET
-    _wdt = microcontroller.watchdog
-    print("## sudo-wdt-armed timeout=8s")
-except Exception as _e:  # noqa: BLE001
-    _wdt = None
-    print("## sudo-wdt-failed {}".format(_e))
-
-# Autoreload OFF in production. Spotlight / Finder file events can't
-# trigger a soft-reload mid-press now.
-supervisor.runtime.autoreload = False
-
-import board
-import digitalio
-import json
-import time
-import usb_hid
-
-print("## sudo-imports-done t={}ms".format(supervisor.ticks_ms()))
-
-
-# --- Wrap-safe ticks_diff (CircuitPython 9 ticks_ms wraps at 2**29) ---
-_TICKS_PERIOD = 1 << 29
-_TICKS_HALFPERIOD = _TICKS_PERIOD // 2
-
-def ticks_diff(t1, t2):
-    diff = (t1 - t2) & (_TICKS_PERIOD - 1)
-    if diff >= _TICKS_HALFPERIOD:
-        diff -= _TICKS_PERIOD
-    return diff
-
-
-# --- HID device lookup -----------------------------------------------
-#
-# Direct-index first (always usb_hid.devices[0] in our config), with a
-# scan fallback in case the order ever surprises us.
-keyboard = None
-consumer = None
-try:
-    keyboard = usb_hid.devices[0]
-    if not (keyboard.usage_page == 0x01 and keyboard.usage == 0x06):
-        keyboard = None
-        for d in usb_hid.devices:
-            if d.usage_page == 0x01 and d.usage == 0x06:
-                keyboard = d
-                break
-except (IndexError, AttributeError):
-    keyboard = None
-
-for d in usb_hid.devices:
-    if d.usage_page == 0x0C and d.usage == 0x01:
-        consumer = d
-        break
-
-print("## sudo-hid-enumerated t={}ms kbd={} cons={}".format(
-    supervisor.ticks_ms(),
-    "ok" if keyboard else "none",
-    "ok" if consumer else "none",
-))
-
-
-# --- Buttons (GP3=btn1 bottom .. GP0=btn4 top) -----------------------
-PINS = (board.GP3, board.GP2, board.GP1, board.GP0)
-buttons = []
-for pin in PINS:
-    p = digitalio.DigitalInOut(pin)
-    p.direction = digitalio.Direction.INPUT
-    p.pull = digitalio.Pull.UP
-    buttons.append(p)
-
-print("## sudo-gpio-ready t={}ms".format(supervisor.ticks_ms()))
-
-
-# --- LEDs ------------------------------------------------------------
-#
-# GP25 is the visible ready LED. It stays on once the firmware reaches
-# the main loop. GP24 is a short per-press flash. Keep both objects
-# alive for the whole run; relying on boot.py ownership across code.py
-# is not reliable.
-READY_LED_PIN = board.GP25
-PRESS_LED_PIN = board.GP24
-PRESS_LED_FLASH_MS = 160
-_ready_led = None
-_press_led = None
-_press_led_off_at = 0
-try:
-    _ready_led = digitalio.DigitalInOut(READY_LED_PIN)
-    _ready_led.direction = digitalio.Direction.OUTPUT
-    _ready_led.value = False
-    print("## sudo-leds-ready t={}ms gp25=ok".format(supervisor.ticks_ms()))
-except Exception as _e:  # noqa: BLE001
-    print("## sudo-leds-ready t={}ms gp25=err:{}".format(supervisor.ticks_ms(), _e))
-
-try:
-    _press_led = digitalio.DigitalInOut(PRESS_LED_PIN)
-    _press_led.direction = digitalio.Direction.OUTPUT
-    _press_led.value = False
-    print("## sudo-leds-press t={}ms gp24=ok".format(supervisor.ticks_ms()))
-except Exception as _e:  # noqa: BLE001
-    print("## sudo-leds-press t={}ms gp24=err:{}".format(supervisor.ticks_ms(), _e))
-
-
-def set_ready_led(on):
-    if _ready_led is None:
-        return
-    try:
-        _ready_led.value = on
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def flash_press_led():
-    global _press_led_off_at
-    if _press_led is None:
-        return
-    try:
-        _press_led.value = True
-        _press_led_off_at = supervisor.ticks_ms() + PRESS_LED_FLASH_MS
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def update_press_led():
-    global _press_led_off_at
-    if _press_led is None or _press_led_off_at == 0:
-        return
-    try:
-        if ticks_diff(supervisor.ticks_ms(), _press_led_off_at) >= 0:
-            _press_led.value = False
-            _press_led_off_at = 0
-    except Exception:  # noqa: BLE001
-        _press_led_off_at = 0
-
-
-# --- Config ----------------------------------------------------------
-DEFAULT_BUTTONS = [
-    {"mode": "keycombo", "keycode": 0x68, "modifiers": 0x03},  # F13
-    {"mode": "keycombo", "keycode": 0x6D, "modifiers": 0x03},  # F18
-    {"mode": "keycombo", "keycode": 0x6C, "modifiers": 0x03},  # F17
-    {"mode": "keycombo", "keycode": 0x6B, "modifiers": 0x03},  # F16
-]
-
-
-def load_config():
-    try:
-        with open("/config.json") as f:
-            cfg = json.load(f).get("buttons", DEFAULT_BUTTONS)
-        if len(cfg) != 4:
-            return DEFAULT_BUTTONS
-        return cfg
-    except (OSError, ValueError):
-        return DEFAULT_BUTTONS
-
-
-config = load_config()
-print("## sudo-config-loaded t={}ms".format(supervisor.ticks_ms()))
-
-
-# --- HID send with failure tracking ----------------------------------
-#
-# Every send_report() call can fail if USB endpoint is stalled. We
-# track consecutive failures; after MAX_SEND_FAILS in a row, hard-reset
-# the chip since a wedged HID endpoint can't be unwedged without a USB
-# stack reinit. This is the second line of defence after the watchdog
-# (which only fires if the loop itself hangs).
-MAX_SEND_FAILS = 3
-_consecutive_send_fails = 0
-
-
-def _note_send_ok():
-    global _consecutive_send_fails
-    _consecutive_send_fails = 0
-
-
-def _note_send_fail(why):
-    global _consecutive_send_fails
-    _consecutive_send_fails += 1
-    print("## sudo-send-fail n={} why={}".format(_consecutive_send_fails, why))
-    if _consecutive_send_fails >= MAX_SEND_FAILS:
-        print("## sudo-hard-reset reason=hid-stalled")
-        # Brief sleep so the print actually goes out the wire.
-        try: time.sleep(0.05)
-        except Exception: pass
-        try: microcontroller.reset()
-        except Exception: pass
-
-
-def send_key_down(modifiers, keycode):
-    if keyboard is None:
-        _note_send_fail("no-keyboard")
-        return
-    try:
-        rpt = bytearray(8)
-        rpt[0] = modifiers & 0xFF
-        rpt[2] = keycode & 0xFF
-        keyboard.send_report(rpt)
-        _note_send_ok()
-    except Exception as e:  # noqa: BLE001
-        _note_send_fail("kd:{}".format(e))
-
-
-def send_key_up():
-    if keyboard is None:
-        return  # release path doesn't trigger reset on its own
-    try:
-        keyboard.send_report(bytearray(8))
-    except Exception as e:  # noqa: BLE001
-        _note_send_fail("ku:{}".format(e))
-
-
-def send_consumer(usage):
-    if consumer is None:
-        return
-    try:
-        rpt = bytearray(2)
-        rpt[0] = usage & 0xFF
-        rpt[1] = (usage >> 8) & 0xFF
-        consumer.send_report(rpt)
-        time.sleep(0.01)
-        consumer.send_report(bytearray(2))
-        _note_send_ok()
-    except Exception as e:  # noqa: BLE001
-        _note_send_fail("cons:{}".format(e))
-
-
-_CONSUMER = {16: 0xCD, 17: 0xB5, 18: 0xB6, 19: 0xB7, 20: 0xE2}
-key_held = [False] * 4
-
-
-def dispatch_press(i):
-    b = config[i]
-    mode = b.get("mode", "keycombo")
-    if mode == "mediakey":
-        usage = _CONSUMER.get(b.get("keycode", 0), 0)
-        if usage:
-            send_consumer(usage)
-    else:
-        send_key_down(b.get("modifiers", 0), b.get("keycode", 0))
-        key_held[i] = True
-
-
-def dispatch_release(i):
-    send_key_up()
-    key_held[i] = False
-
-
-# --- Main loop -------------------------------------------------------
-#
-# debounce_until is seeded from the current ticks_ms() rather than 0.
-# Reason: ticks_diff is wrap-safe across the 2**29 ms period, which
-# means ticks_diff(now, 0) returns NEGATIVE whenever ticks_ms() is in
-# the upper half of the wrap window (anything past ~3.1 days of
-# uptime). The button loop below skips when ticks_diff < 0, so a
-# seed of 0 silently disables button detection for up to ~3 days
-# until ticks_ms() wraps back through zero. Seeding from the current
-# tick makes ticks_diff start at 0 (not negative) and the debounce
-# math stays correct for the actual button-press case.
-DEBOUNCE_MS = 20
-last_state = [True] * 4
-_now0 = supervisor.ticks_ms()
-debounce_until = [_now0] * 4
-
-print("## sudo-ready t={}ms".format(supervisor.ticks_ms()))
-set_ready_led(True)
-try:
-    print("## sudo-buttons-state t={}ms states={}".format(
-        supervisor.ticks_ms(),
-        "".join(["1" if b.value else "0" for b in buttons]),
-    ))
-except Exception as _e:  # noqa: BLE001
-    print("## sudo-buttons-state t={}ms err:{}".format(supervisor.ticks_ms(), _e))
-
-# USB connectivity watchdog. supervisor.runtime.usb_connected goes
-# False when the host stops responding (cable yank, host USB stack
-# crash). If we see it False for USB_GONE_RESET_MS and we're still
-# running (so power is good), force a hard reset to give CircuitPython
-# a fresh USB stack.
-USB_GONE_RESET_MS = 10_000
-_usb_last_seen = supervisor.ticks_ms()
-
-# Heartbeat — every 30s in steady state, with an early-boot burst so
-# the host gets a "I'm alive" line within ~200ms of plug-in.
-#
-# Why the burst exists: CircuitPython's USB CDC TX FIFO is small and not
-# buffered before the host opens the tty. Every boot print before the
-# host attaches gets discarded. The Mac side's `PadConsoleReader` opens
-# /dev/cu.usbmodem* 50ms-1.5s after HID enumeration, which is often
-# AFTER the boot prints have rolled out of the FIFO. Without the burst,
-# the first "## sudo-" line the host sees is the steady-state heartbeat
-# at t=30s — and the Mac-side event-tap refresh on `padReady` doesn't
-# fire until then, so buttons silently don't work for the first 30s
-# after plug-in. The burst at 200ms / 1s / 3s / 10s defeats that race
-# regardless of which side wins the open/print order.
-HEARTBEAT_MS = 30000
-_BOOT_BURST_MS = (200, 1000, 3000, 10000)
-_boot_t = supervisor.ticks_ms()
-_burst_index = 0
-_last_heartbeat = _boot_t
-
-# Error-log throttle: don't spam "loop-error" 10x/s if something is
-# persistently broken. Track last-logged message + min interval.
-_last_err_text = None
-_last_err_logged_at = 0
-ERR_LOG_THROTTLE_MS = 5000
-
-
-def log_error(text):
-    global _last_err_text, _last_err_logged_at
-    now = supervisor.ticks_ms()
-    if text == _last_err_text and ticks_diff(now, _last_err_logged_at) < ERR_LOG_THROTTLE_MS:
-        return
-    _last_err_text = text
-    _last_err_logged_at = now
-    try:
-        print("## sudo-loop-error {}".format(text))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-while True:
-    try:
-        now = supervisor.ticks_ms()
-
-        # Feed the hardware watchdog every loop. Skipping a feed
-        # means the loop is hung; the chip resets within timeout.
-        if _wdt is not None:
-            try:
-                _wdt.feed()
-            except Exception:  # noqa: BLE001
-                pass
-
-        # USB-stack health check. If host says "connected" we update
-        # the timestamp. If it's been gone too long while we're still
-        # running, hard reset to re-init USB.
-        try:
-            usb_ok = supervisor.runtime.usb_connected
-        except Exception:  # noqa: BLE001
-            usb_ok = True  # API missing -> don't reset on a false negative
-        if usb_ok:
-            _usb_last_seen = now
-        elif ticks_diff(now, _usb_last_seen) > USB_GONE_RESET_MS:
-            print("## sudo-hard-reset reason=usb-gone-{}ms".format(
-                ticks_diff(now, _usb_last_seen)))
-            try: time.sleep(0.05)
-            except Exception: pass
-            try: microcontroller.reset()
-            except Exception: pass
-
-        update_press_led()
-
-        for i in range(4):
-            if ticks_diff(now, debounce_until[i]) < 0:
-                continue
-            state = buttons[i].value
-            if state != last_state[i]:
-                last_state[i] = state
-                debounce_until[i] = now + DEBOUNCE_MS
-                if not state:
-                    dispatch_press(i)
-                    flash_press_led()
-                    print("## sudo-press btn={} t={}ms".format(i + 1, now))
-                else:
-                    dispatch_release(i)
-
-        if _burst_index < len(_BOOT_BURST_MS) and \
-                ticks_diff(now, _boot_t) >= _BOOT_BURST_MS[_burst_index]:
-            _burst_index += 1
-            _last_heartbeat = now
-            print("## sudo-alive t={}ms".format(now))
-        elif ticks_diff(now, _last_heartbeat) >= HEARTBEAT_MS:
-            _last_heartbeat = now
-            print("## sudo-alive t={}ms".format(now))
-
-        time.sleep(0.005)
-
-    except Exception as e:  # noqa: BLE001
-        log_error(str(e))
-        try: time.sleep(0.1)
-        except Exception: pass
-"""#
+    // MARK: - Preflight / verification
+
+    private func preflightCircuitPyVolume(_ path: String) throws -> URL {
+        let url = URL(fileURLWithPath: path)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw NSError(domain: "FirmwareFlasher", code: 10, userInfo: [
+                NSLocalizedDescriptionKey: "CIRCUITPY is no longer mounted"
+            ])
+        }
+        guard FileManager.default.fileExists(atPath: url.appendingPathComponent("boot_out.txt").path) else {
+            throw NSError(domain: "FirmwareFlasher", code: 11, userInfo: [
+                NSLocalizedDescriptionKey: "CIRCUITPY marker boot_out.txt was not found"
+            ])
+        }
+        guard FileManager.default.isWritableFile(atPath: url.path) else {
+            throw NSError(domain: "FirmwareFlasher", code: 12, userInfo: [
+                NSLocalizedDescriptionKey: "CIRCUITPY is not writable"
+            ])
+        }
+        return url
+    }
+
+    private func preflightBootloaderVolume(_ path: String) throws -> URL {
+        let url = URL(fileURLWithPath: path)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw NSError(domain: "FirmwareFlasher", code: 20, userInfo: [
+                NSLocalizedDescriptionKey: "RPI-RP2 is no longer mounted"
+            ])
+        }
+        guard FileManager.default.fileExists(atPath: url.appendingPathComponent("INFO_UF2.TXT").path) else {
+            throw NSError(domain: "FirmwareFlasher", code: 21, userInfo: [
+                NSLocalizedDescriptionKey: "RPI-RP2 marker INFO_UF2.TXT was not found"
+            ])
+        }
+        guard FileManager.default.isWritableFile(atPath: url.path) else {
+            throw NSError(domain: "FirmwareFlasher", code: 22, userInfo: [
+                NSLocalizedDescriptionKey: "RPI-RP2 is not writable"
+            ])
+        }
+        return url
+    }
+
+    private func verifyCircuitPyWrite(volume: URL, expectedFiles: [String]) throws {
+        for name in expectedFiles {
+            let url = volume.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw NSError(domain: "FirmwareFlasher", code: 30, userInfo: [
+                    NSLocalizedDescriptionKey: "\(name) was not written"
+                ])
+            }
+            guard fileSize(at: url) > 0 else {
+                throw NSError(domain: "FirmwareFlasher", code: 31, userInfo: [
+                    NSLocalizedDescriptionKey: "\(name) was written but is empty"
+                ])
+            }
+        }
+    }
 
     // MARK: - Copy helpers
 
@@ -904,7 +559,6 @@ while True:
     }
 
     private func findVolume(named name: String, marker: String) -> String? {
-        let volumesPath = "/Volumes"
         guard let contents = try? FileManager.default.contentsOfDirectory(atPath: volumesPath) else {
             return nil
         }
@@ -957,7 +611,7 @@ while True:
 
     private func finishSuccess(label: String) {
         DispatchQueue.main.async {
-            self.state = .success
+            self.state = .success(message: label)
             self.phase = label
             self.progress = 1.0
             self.step = .verify
@@ -967,7 +621,7 @@ while True:
 
     private func setError(_ message: String) {
         DispatchQueue.main.async {
-            self.state = .error(message: message)
+            self.state = .failed(message: message)
             self.phase = message
             self.progress = 0
             print("[sudo] flash error: \(message)")
@@ -1015,33 +669,54 @@ extension FirmwareFlasher {
         let colour: Color
     }
 
+    var canStartFlash: Bool {
+        switch state {
+        case .flashMode, .bootloader:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var firmwareSourceLabel: String {
+        do {
+            return try assetProvider.padFirmwareFiles().sourceDescription
+        } catch {
+            return "missing pad firmware: \(error.localizedDescription)"
+        }
+    }
+
+    var circuitPythonSourceLabel: String {
+        if let url = assetProvider.circuitPythonUF2(version: Self.circuitPythonVersion) {
+            return url.path
+        }
+        if FileManager.default.fileExists(atPath: circuitPythonCacheURL.path) {
+            return circuitPythonCacheURL.path
+        }
+        return "will download CircuitPython \(Self.circuitPythonVersion) if needed"
+    }
+
     /// Human-readable status used by the settings device panel and the
     /// onboarding flow. Reads `state` so the same source of truth drives
     /// every "is the pad plugged in?" UI.
     var deviceConnectionLabel: ConnectionLabel {
         switch state {
-        case .readyForConfig:
-            return .init(label: "device: connected (CircuitPython)", colour: SudoTheme.accent)
-        case .readyForFirmware:
+        case .flashMode:
+            return .init(label: "device: flash mode (CIRCUITPY mounted)", colour: SudoTheme.accent)
+        case .bootloader:
             return .init(label: "device: in BOOTSEL — needs install", colour: Color(nsColor: .systemYellow))
         case .detectingDevice:
             return .init(label: "device: scanning…", colour: Color(nsColor: .systemYellow))
         case .flashing:
             return .init(label: "device: flashing", colour: SudoTheme.accent)
-        case .success:
-            return .init(label: "device: just flashed", colour: SudoTheme.accent)
-        case .error(let msg):
+        case .success(_):
+            return .init(label: "device: flashed — replug normally", colour: SudoTheme.accent)
+        case .failed(let msg):
             return .init(label: "device: error — \(msg)", colour: Color(nsColor: .systemRed))
-        case .idle:
-            // After v1.5.3 boot.py hides the CIRCUITPY drive in normal
-            // use, so the volume-mount notification never fires when the
-            // pad is just running. The IOKit HID watcher gives us a
-            // reliable "is the pad here" signal that doesn't depend on
-            // the mass-storage drive being visible.
-            if hidConnected {
-                return .init(label: "device: connected (running)",
-                             colour: SudoTheme.accent)
-            }
+        case .running:
+            return .init(label: "device: connected (running)",
+                         colour: SudoTheme.accent)
+        case .idle, .noDevice:
             return .init(label: "device: not detected (hold button 1 + replug to flash)",
                          colour: Color(nsColor: .separatorColor))
         }

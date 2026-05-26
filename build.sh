@@ -43,24 +43,39 @@ fi
 cd "$SCRIPT_DIR"
 
 # ----------------------------------------------------------------------------
-# Optional: bundle the CircuitPython UF2 to skip the runtime download.
+# Bundle pad firmware and the pinned CircuitPython UF2.
 #
-# `code.py` is embedded as a Swift string constant inside the app — no
-# bundling needed for it, the source of truth lives in
-# Sudo/Sources/Sudo/Services/FirmwareFlasher.swift (kept in sync with
-# sudo-supply/hardware/firmware/code.py).
+# `Sudo/Resources/Firmware/pad` is the source of truth for files written
+# to CIRCUITPY. Keep those files visible in the bundle so the app never
+# flashes stale Swift-embedded firmware.
 #
-# `circuitpython-pico.uf2` — optional override. If missing, the app
-# downloads it from downloads.circuitpython.org on first flash and caches it.
+# `circuitpython-pico-9.2.1.uf2` is bundled for offline first-time flash.
+# If it is missing locally, build.sh downloads the pinned file.
 # ----------------------------------------------------------------------------
 echo ""
-CP_UF2="${SUDO_CIRCUITPYTHON_UF2:-}"
-if [ -n "$CP_UF2" ] && [ -f "$CP_UF2" ]; then
-    cp "$CP_UF2" "$RESOURCES/circuitpython-pico.uf2"
-    echo "[sudo] Bundled CircuitPython ($(du -h "$RESOURCES/circuitpython-pico.uf2" | cut -f1))"
+FIRMWARE_SRC="$SCRIPT_DIR/Sudo/Resources/Firmware"
+FIRMWARE_DST="$RESOURCES/Firmware"
+mkdir -p "$FIRMWARE_DST"
+if [ -d "$FIRMWARE_SRC/pad" ]; then
+    cp -R "$FIRMWARE_SRC/pad" "$FIRMWARE_DST/pad"
+    echo "[sudo] Bundled pad firmware"
 else
-    echo "[sudo] CircuitPython UF2 not bundled — app will download on first flash"
+    echo "[sudo] ERROR: missing $FIRMWARE_SRC/pad"
+    exit 1
 fi
+
+CP_VERSION="9.2.1"
+CP_UF2="${SUDO_CIRCUITPYTHON_UF2:-$FIRMWARE_SRC/circuitpython-pico-$CP_VERSION.uf2}"
+if [ ! -f "$CP_UF2" ]; then
+    mkdir -p "$FIRMWARE_SRC"
+    CP_UF2="$FIRMWARE_SRC/circuitpython-pico-$CP_VERSION.uf2"
+    echo "[sudo] Downloading CircuitPython $CP_VERSION for offline flashing..."
+    curl -L --fail \
+        "https://downloads.circuitpython.org/bin/raspberry_pi_pico/en_US/adafruit-circuitpython-raspberry_pi_pico-en_US-$CP_VERSION.uf2" \
+        -o "$CP_UF2"
+fi
+cp "$CP_UF2" "$FIRMWARE_DST/circuitpython-pico-$CP_VERSION.uf2"
+echo "[sudo] Bundled CircuitPython ($(du -h "$FIRMWARE_DST/circuitpython-pico-$CP_VERSION.uf2" | cut -f1))"
 
 # Create Info.plist
 cat > "$CONTENTS/Info.plist" << PLIST

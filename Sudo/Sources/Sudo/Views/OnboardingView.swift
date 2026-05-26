@@ -40,7 +40,7 @@ struct OnboardingView: View {
                 || flasher.deviceConnectionLabel.label.contains("BOOTSEL")
         case .flash:
             switch flasher.state {
-            case .readyForConfig, .success: return true
+            case .success(_), .running: return true
             default: return false
             }
         case .test:
@@ -182,7 +182,7 @@ struct OnboardingView: View {
                     .tint(SudoTheme.accent)
                     .disabled({
                         switch flasher.state {
-                        case .readyForConfig, .readyForFirmware: return false
+                        case .flashMode, .bootloader: return false
                         default: return true
                         }
                     }())

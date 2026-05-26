@@ -13,6 +13,7 @@ struct SettingsWindow: View {
 
     enum Section: String, CaseIterable, Identifiable {
         case general
+        case device
         case buttons
         case macros
         case autoSwitch
@@ -26,6 +27,7 @@ struct SettingsWindow: View {
         var title: String {
             switch self {
             case .general:     return "general"
+            case .device:      return "device"
             case .buttons:     return "buttons"
             case .macros:      return "macros"
             case .autoSwitch:  return "auto-switch"
@@ -39,6 +41,7 @@ struct SettingsWindow: View {
         var systemImage: String {
             switch self {
             case .general:     return "slider.horizontal.3"
+            case .device:      return "externaldrive.fill"
             case .buttons:     return "square.grid.2x2"
             case .macros:      return "list.number"
             case .autoSwitch:  return "arrow.triangle.2.circlepath"
@@ -95,6 +98,8 @@ struct SettingsWindow: View {
         switch selection ?? .general {
         case .general:
             GeneralPanel(engine: engine)
+        case .device:
+            DevicePanel()
         case .buttons:
             ButtonsPanel()
         case .macros:

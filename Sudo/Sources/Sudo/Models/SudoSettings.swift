@@ -94,6 +94,47 @@ final class SudoSettings: ObservableObject {
         didSet { defaults.set(debounceDuration, forKey: "debounceDuration") }
     }
 
+    // MARK: - LED Settings (underglow on the two bottom green LEDs)
+
+    /// Master enable for the bottom LEDs. Off kills them in any mode.
+    @Published var ledsEnabled: Bool {
+        didSet {
+            defaults.set(ledsEnabled, forKey: "ledsEnabled")
+            PadCommunicator.shared.pushAllSettings()
+        }
+    }
+
+    /// Brightness 0–100; pad firmware maps to PWM duty cycle.
+    @Published var ledBrightness: Int {
+        didSet {
+            let clamped = max(0, min(100, ledBrightness))
+            if clamped != ledBrightness {
+                ledBrightness = clamped
+                return  // didSet fires again with the clamped value
+            }
+            defaults.set(ledBrightness, forKey: "ledBrightness")
+            PadCommunicator.shared.pushAllSettings()
+        }
+    }
+
+    /// One of `Self.ledModes`. Stored as a string so adding a new mode
+    /// later doesn't break user-defaults decoding.
+    @Published var ledMode: String {
+        didSet {
+            guard Self.ledModes.contains(ledMode) else {
+                ledMode = "feedback"  // didSet fires again
+                return
+            }
+            defaults.set(ledMode, forKey: "ledMode")
+            PadCommunicator.shared.pushAllSettings()
+        }
+    }
+
+    /// Supported LED modes. Keep in sync with the firmware's pattern
+    /// engine — adding a mode here without firmware support means the
+    /// pad just falls back to its default behaviour for unknown modes.
+    static let ledModes: [String] = ["feedback", "breathe", "solid", "status-dim"]
+
     /// Auto-switch presets when the frontmost app changes category
     @Published var autoSwitchEnabled: Bool {
         didSet { defaults.set(autoSwitchEnabled, forKey: "autoSwitchEnabled") }
@@ -255,6 +296,10 @@ final class SudoSettings: ObservableObject {
         self.apiKey = defaults.string(forKey: "apiKey") ?? Self.generateAPIKey()
         self.telemetryEnabled = defaults.object(forKey: "telemetryEnabled") == nil ? true : defaults.bool(forKey: "telemetryEnabled")
         self.debounceDuration = defaults.object(forKey: "debounceDuration") == nil ? 0.02 : defaults.double(forKey: "debounceDuration")
+        self.ledsEnabled = defaults.object(forKey: "ledsEnabled") == nil ? true : defaults.bool(forKey: "ledsEnabled")
+        self.ledBrightness = defaults.object(forKey: "ledBrightness") == nil ? 60 : defaults.integer(forKey: "ledBrightness")
+        let savedMode = defaults.string(forKey: "ledMode") ?? "feedback"
+        self.ledMode = Self.ledModes.contains(savedMode) ? savedMode : "feedback"
         self.autoSwitchEnabled = defaults.object(forKey: "autoSwitchEnabled") == nil ? true : defaults.bool(forKey: "autoSwitchEnabled")
         // Load saved category → preset map. Then merge in any newly-shipped
         // categories (e.g. .youtube added in v1.4.x) so existing users
@@ -526,6 +571,17 @@ final class SudoSettings: ObservableObject {
 
     func resetHotkeyBindings() {
         hotkeyBindings = Self.defaultHotkeyBindings
+    }
+
+    /// One-line description of an LED mode for the settings UI.
+    static func describeLEDMode(_ mode: String) -> String {
+        switch mode {
+        case "feedback":   return "idle off, pulse on press, breathe while busy, blink on result"
+        case "breathe":    return "slow ambient breathing, ignores events"
+        case "solid":      return "always on at the chosen brightness"
+        case "status-dim": return "dark when idle, briefly lights only on events"
+        default:           return ""
+        }
     }
 
     static func generateAPIKey() -> String {
