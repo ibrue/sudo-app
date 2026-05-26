@@ -85,6 +85,59 @@ struct GeneralPanel: View {
                 .foregroundColor(SudoTheme.textMuted)
                 .buttonStyle(.plain)
                 .accessibilityLabel("reset hotkey bindings to defaults")
+
+            SudoDivider()
+
+            sectionHeader("leds")
+            Text("the two green leds on the bottom of the pad. requires the latest firmware to respond live.")
+                .font(SudoTheme.caption)
+                .foregroundColor(SudoTheme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 10) {
+                SettingToggle(label: "enable underglow", isOn: $settings.ledsEnabled)
+
+                if settings.ledsEnabled {
+                    HStack(spacing: 12) {
+                        Text("\(settings.ledBrightness)%")
+                            .font(SudoTheme.code(size: 13))
+                            .foregroundColor(SudoTheme.text)
+                            .monospacedDigit()
+                            .frame(width: 70, alignment: .leading)
+                        Slider(
+                            value: Binding(
+                                get: { Double(settings.ledBrightness) },
+                                set: { settings.ledBrightness = Int($0.rounded()) }
+                            ),
+                            in: 0...100,
+                            step: 1
+                        )
+                        .tint(SudoTheme.accent)
+                        .frame(maxWidth: 320)
+                    }
+
+                    HStack(spacing: 12) {
+                        Text("mode")
+                            .font(SudoTheme.body)
+                            .foregroundColor(SudoTheme.textMuted)
+                            .frame(width: 70, alignment: .leading)
+                        Picker("", selection: $settings.ledMode) {
+                            ForEach(SudoSettings.ledModes, id: \.self) { mode in
+                                Text(mode).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 200)
+                        Spacer()
+                    }
+
+                    Text(SudoSettings.describeLEDMode(settings.ledMode))
+                        .font(SudoTheme.caption)
+                        .foregroundColor(SudoTheme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

@@ -143,17 +143,37 @@ final class PadConsoleReader: ObservableObject {
     // MARK: - Internals
 
     private static func findPort() -> String? {
+        findConsolePort()
+    }
+
+    /// All `cu.usbmodem*` ports, sorted lexically. With CircuitPython's
+    /// `usb_cdc.enable(console=True, data=True)` two devices appear:
+    /// the console interface (lower USB interface index, sorts first)
+    /// and the data interface (higher index, sorts second). With only
+    /// `console=True` you get one device.
+    static func allPorts() -> [String] {
         let dev = "/dev"
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dev) else {
-            return nil
+            return []
         }
-        // `cu.usbmodem*` is the macOS naming for USB CDC devices.
-        // Sorted so a stable choice across calls when more than one
-        // is present (rare).
-        let candidates = entries
+        return entries
             .filter { $0.hasPrefix("cu.usbmodem") }
             .sorted()
-        return candidates.first.map { "\(dev)/\($0)" }
+            .map { "\(dev)/\($0)" }
+    }
+
+    /// Console interface — the one the firmware prints on. Always the
+    /// first sorted `cu.usbmodem*`.
+    static func findConsolePort() -> String? {
+        allPorts().first
+    }
+
+    /// Dedicated data interface used by `PadCommunicator` for host→pad
+    /// commands. Only present when firmware's `boot.py` enables it; nil
+    /// otherwise (and the communicator stays silently disconnected).
+    static func findDataPort() -> String? {
+        let ports = allPorts()
+        return ports.count >= 2 ? ports[1] : nil
     }
 
     private func readAvailable() {

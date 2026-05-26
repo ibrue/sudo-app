@@ -225,6 +225,7 @@ final class SudoEngine: ObservableObject {
         startAutoApproveTimer()
 
         PadCommunicator.shared.connect()
+        PadCommunicator.shared.pushAllSettings()
         PadCommunicator.shared.sendState(.idle)
 
         SudoTelemetry.shared.trackLaunch()
@@ -593,8 +594,10 @@ final class SudoEngine: ObservableObject {
         lastActionTime = now
 
         // Under-glow flash on every accepted press — fast visual feedback that
-        // the press registered, before any pipeline work runs.
-        PadCommunicator.shared.sendState(.buttonPressed)
+        // the press registered, before any pipeline work runs. Pass the
+        // physical button number so the firmware can fire a per-button
+        // identity signature instead of a generic pulse.
+        PadCommunicator.shared.sendPress(button: action.buttonNumber)
 
         // INSTANT feedback that Sudo received the press: short Tink sound
         // (subtle), popover status update, menu-bar label flip to processing.
