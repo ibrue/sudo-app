@@ -9,11 +9,14 @@ Current version: **1.7.3-beta**.
 ## What it does
 
 - Listens for the pad's global hotkeys with a macOS event tap.
-- Detects the frontmost app by bundle ID, app name, and browser tab metadata.
+- Detects the frontmost app by bundle ID and app name; for supported browsers,
+  it also inspects the active tab URL/title when macOS exposes it.
 - Runs per-app button actions such as approve/reject prompts, YouTube controls,
   media keys, CAD shortcuts, and custom keystrokes.
 - Auto-switches presets by app category in dynamic mode.
 - Flashes and configures the RP2040 pad from inside the app.
+- Controls the pad's two bottom LEDs live over CircuitPython's second CDC
+  serial channel.
 - Shows pad connection, firmware, progress, and console diagnostics in Settings.
 
 ## Button layout
@@ -67,11 +70,19 @@ The app uses those bundled files as the flashing source of truth. If a
 development build omits the UF2, the flasher falls back to downloading and
 caching the pinned CircuitPython build.
 
+The current firmware enables:
+
+- HID keyboard + consumer-control output for button presses.
+- CDC console output for diagnostics.
+- A second CDC data channel for host-to-pad LED commands.
+- PWM underglow on GP24 and GP25 with `feedback`, `breathe`, `solid`, and
+  `status-dim` modes.
+
 ## App modes
 
 | Mode | Behavior |
 |---|---|
-| **dynamic** | Pad emits app hotkeys; Sudo dispatches context-aware actions in real time. Default. |
+| **dynamic** | Firmware emits passthrough F-key hotkeys; Sudo dispatches context-aware actions in real time. Default. |
 | **simple** | Pad emits the configured keystrokes directly, so it can work without the app running. |
 
 Settings also include button editing, macros, auto-switch presets,
@@ -82,18 +93,23 @@ auto-approve rules, action history, developer diagnostics, and the Device panel.
 | Preset | Typical bindings |
 |---|---|
 | AI Agent | approve / make better / reject / yolo |
+| Plan Mode | approve plan / reject plan / revise plan / exit |
 | Claude Code | prompt-aware AI actions and keyboard fallbacks |
+| System Shortcuts | copy / paste / undo / screenshot |
 | YouTube | play-pause / rewind / forward / fullscreen |
 | Media | play-pause / next / previous / Spotify like |
+| Web Browsing | back / forward / refresh / close tab |
+| Discord Soundboard | soundboard shortcuts and mute/deafen |
 | CAD | app-specific CAD shortcuts |
+| Bambu Studio | slice / arrange / save / print |
 | Video Editing | common timeline/editing actions |
 | Writing | document and note-taking shortcuts |
 | Communication | Slack, Teams, Discord, Zoom-oriented actions |
 | Design | Figma, Sketch, Adobe/Affinity-oriented actions |
-| System Shortcuts | general macOS shortcuts |
 
-Dynamic mode maps app categories to presets automatically. Per-app overrides are
-available in Settings.
+Dynamic mode maps app categories to presets automatically. Browser apps default
+to the YouTube preset, and Bambu Studio is seeded as a per-app override. Other
+per-app overrides are available in Settings.
 
 ## How dispatch works
 
@@ -112,6 +128,8 @@ available in Settings.
 - Menu bar status shows idle, processing, success, and failure states.
 - The popover shows current target app, app mode, last action, and pad status.
 - Failure to find a UI target shows a transient toast.
+- The pad underglow can show press identity, busy/result state, ambient
+  breathing, solid light, or dim event-only status.
 - Settings -> History records recent actions and detection results.
 - Settings -> Device shows pad connection state, flash progress, recovery
   guidance, and the pad CDC console.
