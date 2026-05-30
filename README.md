@@ -1,150 +1,161 @@
-# [sudo] — macOS Companion App
+# [sudo] macOS companion app
 
-Menu bar daemon for the [sudo macro pad](https://sudo.supply). Translates physical button presses into per-app actions: AI permission approvals, media controls, YouTube playback, custom keystrokes.
+Menu bar companion for the [sudo macro pad](https://sudo.supply). It turns the
+four physical buttons into context-aware actions for AI permission prompts,
+editors, browsers, media apps, CAD tools, and custom workflows.
 
-Current version: **1.5.3-beta**.
+Current version: **1.7.3-beta**.
 
-## Button Layout
+## What it does
+
+- Listens for the pad's global hotkeys with a macOS event tap.
+- Detects the frontmost app by bundle ID, app name, and browser tab metadata.
+- Runs per-app button actions such as approve/reject prompts, YouTube controls,
+  media keys, CAD shortcuts, and custom keystrokes.
+- Auto-switches presets by app category in dynamic mode.
+- Flashes and configures the RP2040 pad from inside the app.
+- Shows pad connection, firmware, progress, and console diagnostics in Settings.
+
+## Button layout
 
 Physical device, bottom to top:
 
-| # | Color | Hotkey | Default Action |
-|---|-------|--------|----------------|
-| 1 (bottom) | Green | `Ctrl+Shift+F13` | Approve / Yes |
+| # | Color | Default hotkey | Default action |
+|---|---|---|---|
+| 1 | Green | `Ctrl+Shift+F13` | Approve / Yes |
 | 2 | Yellow | `Ctrl+Shift+F18` | Make it better |
 | 3 | Red | `Ctrl+Shift+F17` | Reject / No |
-| 4 (top) | Black | `Ctrl+Shift+F16` | YOLO (allow all) |
+| 4 | Black | `Ctrl+Shift+F16` | YOLO / allow all |
 
-`F14` and `F15` are deliberately skipped — macOS treats them as display-brightness keys even with modifiers. F17/F18 are unclaimed by the system.
+`F14` and `F15` are skipped because macOS treats them as display-brightness keys
+on Apple-style keyboards, even with modifiers.
 
-All bindings are remappable in the **edit preset** wizard (settings → edit preset → walk through all 4 buttons).
-
-## Install
+## Install from source
 
 ```bash
-cd sudo-app
-./build.sh                                   # builds dist/Sudo.app
+./build.sh
 rm -rf /Applications/Sudo.app
 cp -r dist/Sudo.app /Applications/
 open /Applications/Sudo.app
 ```
 
-Or download from [sudo.supply/download](https://sudo.supply/download) / [GitHub Releases](https://github.com/ibrue/sudo-app/releases).
+`build.sh` creates `dist/Sudo.app`, bundles pad firmware, bundles the pinned
+CircuitPython UF2 for offline first-time flashing, and signs the app with a
+stable ad-hoc requirement.
 
-After install, click **flash device** in settings to push the latest CircuitPython firmware + your config to the macropad.
+## Flash the pad
 
-## How it works
+Open **Settings -> Device**.
 
-1. **Listen** — global CGEvent tap catches `Ctrl+Shift+F13/F17/F18/F16` from the macropad. Subscribed to `tapDisabledByTimeout` / `tapDisabledByUserInput` so macOS auto-disabling the tap is recovered instantly.
-2. **Detect** — identifies the frontmost app via bundle ID, name hints, or browser-tab URL/title.
-3. **Dispatch** — based on the button's mode:
-   - **aiSearch** → 4-strategy match pipeline: AX accessibility tree → Automation (System Events) → Vision OCR → keyboard fallback for editors
-   - **keyCombo** → genuine HID hold (key-down on press, key-up on release — YouTube's hold-spacebar-for-2x works)
-   - **mediaKey** → consumer-control HID code (play/pause, next, prev, mute)
-4. **Act** — `AXUIElement.performAction` (anti-cheat-safe), with mouse-click + AppleScript click as fallbacks.
+The Device panel handles the supported sudo RP2040/CircuitPython pad flow:
 
-## Two modes
+- **Running pad**: normal production firmware hides `CIRCUITPY`. To flash,
+  unplug the pad, hold button 1, and plug it back in.
+- **CIRCUITPY mounted**: the app writes `boot.py`, `code.py`, `sudo_leds.py`,
+  generated `config.json`, and `.metadata_never_index`.
+- **RPI-RP2 mounted**: the app copies bundled CircuitPython `9.2.1`, waits for
+  `CIRCUITPY`, then writes the pad firmware and config.
 
-| Mode | Behaviour |
-|------|-----------|
-| **dynamic** | Auto-switches preset by frontmost app category. The app dispatches per-app actions in real time. Default. |
-| **simple** | One fixed preset; the firmware sends keystrokes natively, so the pad works standalone without the app running. |
+Bundled firmware lives in:
 
-The legacy "custom" mode collapsed into **simple → edit preset** in v1.4.
+```text
+Sudo/Resources/Firmware/pad/
+Sudo/Resources/Firmware/circuitpython-pico-9.2.1.uf2
+```
 
-## Auto-detected app categories
+The app uses those bundled files as the flashing source of truth. If a
+development build omits the UF2, the flasher falls back to downloading and
+caching the pinned CircuitPython build.
 
-| Category | Default Preset | Triggers on |
-|---|---|---|
-| AI apps | AI Agent | Claude.app, ChatGPT.app, claude.ai / chatgpt.com / grok.com tabs |
-| Editors / IDEs | Claude Code | VS Code, Cursor, Windsurf, Warp, iTerm2, Ghostty, Kitty, Alacritty, Terminal.app |
-| Browsers | YouTube | Any tab in Safari / Chrome / Firefox / Brave / Edge / Arc / Opera |
-| YouTube | YouTube | youtube.com / music.youtube.com tabs (in any browser) |
-| Media | Media Controls | Spotify, Apple Music, VLC, IINA, Tidal, Plex |
-| CAD | CAD | Fusion 360, AutoCAD, Rhino, FreeCAD, SketchUp, SOLIDWORKS, Inventor |
-| Video editing | Video Editing | Final Cut, DaVinci Resolve, Premiere, After Effects, iMovie, CapCut |
-| Writing | Writing | Notion, Obsidian, Bear, Pages, Word, Typora |
-| Communication | Communication | Slack, Teams, Discord, Zoom, Webex |
-| Design | Design | Figma, Sketch, Affinity, Photoshop, Illustrator |
+## App modes
+
+| Mode | Behavior |
+|---|---|
+| **dynamic** | Pad emits app hotkeys; Sudo dispatches context-aware actions in real time. Default. |
+| **simple** | Pad emits the configured keystrokes directly, so it can work without the app running. |
+
+Settings also include button editing, macros, auto-switch presets,
+auto-approve rules, action history, developer diagnostics, and the Device panel.
 
 ## Built-in presets
 
-| Preset | Bindings |
-|--------|----------|
-| **AI Agent** | approve / make-it-better / reject / yolo (AI permission prompts) |
-| **YouTube** | space (play/pause) / j (-10s) / l (+10s) / f (fullscreen) — bottom to top |
-| **Media** | play-pause / next / previous / `Opt+Shift+B` (Spotify "save to liked") |
-| **Plan Mode**, **Claude Code**, **Web Browsing**, **Discord Soundboard**, **CAD**, **Video Editing**, **Writing**, **Communication**, **Design**, **System Shortcuts** | preset-specific |
+| Preset | Typical bindings |
+|---|---|
+| AI Agent | approve / make better / reject / yolo |
+| Claude Code | prompt-aware AI actions and keyboard fallbacks |
+| YouTube | play-pause / rewind / forward / fullscreen |
+| Media | play-pause / next / previous / Spotify like |
+| CAD | app-specific CAD shortcuts |
+| Video Editing | common timeline/editing actions |
+| Writing | document and note-taking shortcuts |
+| Communication | Slack, Teams, Discord, Zoom-oriented actions |
+| Design | Figma, Sketch, Adobe/Affinity-oriented actions |
+| System Shortcuts | general macOS shortcuts |
 
-Apply via settings → edit preset → quick presets.
+Dynamic mode maps app categories to presets automatically. Per-app overrides are
+available in Settings.
 
-## App-specific quirks handled
+## How dispatch works
 
-- **Fusion 360** — after a successful "save" press, the app posts `Return` 1s later to dismiss the Save Version dialog.
-- **YouTube hold-for-2x** — keyCombo dispatch holds the HID report until you release the physical button. Hold the bottom button on a YouTube tab → 2x speed kicks in.
-- **F14/F15 brightness** — defaults skip these; existing user bindings are auto-migrated to F17/F18 on first launch.
+1. **Listen**: a global `CGEvent` tap catches the pad hotkeys and recovers when
+   macOS disables the tap.
+2. **Detect**: Sudo identifies the active app and, for browsers, the active tab
+   URL/title where available.
+3. **Choose action**: dynamic mode selects the preset for the detected app;
+   simple mode uses the fixed configured button mapping.
+4. **Act**: AI-search actions try Accessibility, Automation/System Events,
+   Vision OCR, then keyboard fallback. Key-combo and media-key actions dispatch
+   directly.
 
-## Menu bar label
+## Feedback and diagnostics
 
-Stays out of the way:
-
-| Display | When |
-|---------|------|
-| `[sudo]` | idle |
-| `[····]` (animated) | dispatch in progress |
-| `[✓ approve]` | success — holds 2.5 s, then idle |
-| `[✗ reject]` | failure — holds 4 s, then idle |
-
-## In-app feedback
-
-- **Failure toast** — borderless floating panel under the menu bar with `couldn't <action> in <app>` whenever an AI-search press doesn't find a target. Auto-dismisses in 3 s.
-- **Action history** — last 50 actions with timestamps and per-method status, browsable in settings.
-- **Debug console** — every dispatch step logged with a copy button for sharing reports.
-- **Device LED** — both under-glow LEDs (GP24 + GP25) flash 120 ms on every press. Each pin is claimed independently inside try/except so if CircuitPython has already grabbed GP25 for its status indicator we just keep GP24 going without crashing.
-
-## Firmware
-
-The macropad runs CircuitPython 9.x. Source lives in `sudo-supply/hardware/firmware/code.py`; the app bundles a verbatim copy and writes it to the CIRCUITPY drive on flash. Pure HID transport — no boot.py, no serial protocol, no `pwmio`.
-
-Pin order: `(GP3, GP2, GP1, GP0)` so `buttons[0]` is the bottom switch (matching the app's physical-order indexing).
+- Menu bar status shows idle, processing, success, and failure states.
+- The popover shows current target app, app mode, last action, and pad status.
+- Failure to find a UI target shows a transient toast.
+- Settings -> History records recent actions and detection results.
+- Settings -> Device shows pad connection state, flash progress, recovery
+  guidance, and the pad CDC console.
+- Settings -> Developer includes debug logs, local API controls, plugin state,
+  and build/rebuild output.
 
 ## Permissions
 
-| Permission | What for | Required? |
+| Permission | Used for | Required |
 |---|---|---|
-| Accessibility | hotkey listener + AX tree reading | yes |
-| Automation (System Events) | AppleScript fallback for sheets / dialogs | recommended |
-| Screen Recording | OCR fallback (Vision framework) | optional |
+| Accessibility | Global hotkey listener and Accessibility tree actions | Yes |
+| Automation | System Events / AppleScript fallback clicks and keystrokes | Recommended |
+| Screen Recording | Vision OCR fallback | Optional |
 
-The app prompts on first launch and shows a red banner with **open settings** until accessibility is granted.
+If Accessibility is missing, Sudo shows a banner with actions to open System
+Settings, relaunch, reset permissions, or re-check.
 
-## OTA Updates
+## Development
 
-Checks GitHub Releases every 4 h. When a newer beta is found, the **install** banner appears in the popover.
+Useful commands:
 
-To cut a release:
-1. Bump `OTAUpdater.currentVersion` (single source of truth — `build.sh` reads it via grep).
-2. `./build.sh && ./create-dmg.sh` on macOS.
-3. Tag + GitHub Release with the `.dmg` attached.
+```bash
+swift test --package-path Sudo
+./build.sh
+./create-dmg.sh
+```
+
+Version source of truth:
+
+```text
+Sudo/Sources/Sudo/Services/OTAUpdater.swift
+```
+
+`build.sh` reads `OTAUpdater.currentVersion` and writes it into the app bundle.
+
+## Release checklist
+
+1. Update `OTAUpdater.currentVersion`.
+2. Run `swift test --package-path Sudo`.
+3. Run `./build.sh`.
+4. Run `./create-dmg.sh`.
+5. Tag the release and attach the DMG in GitHub Releases.
 
 ## Anti-cheat compatibility
 
-Uses the macOS Accessibility API — same interface as VoiceOver and Shortcuts.app. No HID injection, no memory patching, no kernel extensions.
-
-## Recent changelog (highlights)
-
-- **1.5.3** — hot-pluggable firmware: `boot.py` hides CIRCUITPY in normal use (no more "eject before unplug" warning); hold button 1 while plugging in to enter flash mode. Claude Code preset reverts to AI-search so it adapts: clicks visible UI buttons (Cursor / Claude.app sheets), falls through to typing 1/2/3/Esc when there's only a text prompt.
-- **1.5.2** — Bambu Studio preset (slice / arrange / save / print, auto-applied)
-- **1.5.1** — both under-glow LEDs flash on press (was GP24-only)
-- **1.5.0** — firmware press-and-hold (key-down on press, key-up on release)
-- **1.4.9** — browser default switched to YouTube preset
-- **1.4.8** — auto-switch to YouTube preset on Chrome / Safari / etc. tabs
-- **1.4.7** — `AutomationButtonFinder` no longer activates apps it's just probing
-- **1.4.6** — keep CGEvent tap alive across macOS auto-disables (fixes "doesn't work for a few minutes")
-- **1.4.5** — copy button on debug console
-- **1.4.4** — LED feedback on press, Fusion save → Enter, Spotify Opt+Shift+B Like
-- **1.4.3** — build fixes
-- **1.4.2** — auto-detect device on USB mount/unmount; failure toast
-- **1.4.1** — edit-preset 4-button wizard, redesigned onboarding, fix button order
-- **1.4.0** — popover redesign (~260pt tall, native macOS feel, glass cards)
-- **1.3.x** — pure-HID firmware path; `supervisor.ticks_diff` fix that resolved the long-running "buttons don't do anything" bug
+Sudo uses macOS Accessibility and standard event APIs. It does not patch memory,
+install kernel extensions, or use game-process injection.
