@@ -4,7 +4,7 @@ Menu bar companion for the [sudo macro pad](https://sudo.supply). It turns the
 four physical buttons into context-aware actions for AI permission prompts,
 editors, browsers, media apps, CAD tools, and custom workflows.
 
-Current version: **1.7.3-beta**.
+Current version: **1.7.4-beta**.
 
 ## What it does
 

@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="Sudo"
-VERSION="1.0.0"
+VERSION=$(grep 'static let currentVersion' "$SCRIPT_DIR/Sudo/Sources/Sudo/Services/OTAUpdater.swift" | sed 's/.*"\(.*\)".*/\1/')
 DMG_NAME="Sudo-${VERSION}-macOS"
 APP_PATH="$SCRIPT_DIR/dist/$APP_NAME.app"
 DMG_DIR="$SCRIPT_DIR/dist/dmg"
